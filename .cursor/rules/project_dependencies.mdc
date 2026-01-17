@@ -1,0 +1,293 @@
+---
+description: Project Dependencies - dart_odbc, result_dart, uuid for ODBC project
+globs: ["lib/**/*.dart", "pubspec.yaml"]
+alwaysApply: true
+---
+
+# Project Dependencies - demo_odbc
+
+This project uses the following dependencies specifically for ODBC database access and error handling.
+
+## Project-Specific Dependencies
+
+### 1. dart_odbc - ODBC Database Access
+
+- ✅ **SEMPRE usar `dart_odbc`** para acesso ODBC
+- ✅ Use para conexão com bancos de dados via ODBC
+- ✅ Configure DatabaseConfig para SQL Server, Oracle, etc.
+- ✅ Use SqlCommand para executar queries SQL
+- ✅ Use SqlTransaction para transações
+- ✅ Gerencie conexões com OdbcConnectionPool
+
+**Exemplo:**
+
+```dart
+import 'package:dart_odbc/dart_odbc.dart';
+
+final config = DatabaseConfig.sqlServer(
+  driverName: 'SQL Server Native Client 11.0',
+  username: 'sa',
+  password: 'password',
+  database: 'database_name',
+  server: 'SERVER_NAME',
+  port: 1433,
+);
+
+final command = SqlCommand(config);
+await command.connect();
+
+command.commandText = 'SELECT * FROM Table WHERE Id = :id';
+command.param('id').asInt = 1;
+
+await command.execute();
+```
+
+### 2. result_dart - Error Handling
+
+- ✅ **SEMPRE usar `result_dart`** para tratamento de erros
+- ✅ Use `Result<T>` para retornos que podem falhar
+- ✅ Use `Success(value)` para sucesso e `Failure(exception)` para falha
+- ✅ Use `fold()` para tratar sucesso e falha
+- ✅ Use `isSuccess()` e `isFailure()` para verificar o estado
+
+**Exemplo:**
+
+```dart
+import 'package:result_dart/result_dart.dart';
+
+Future<Result<User>> getUser(String id) async {
+  if (id.isEmpty) {
+    return Failure(ValidationFailure('ID cannot be empty'));
+  }
+
+  try {
+    final result = await repository.getById(id);
+    return Success(user);
+  } catch (e) {
+    return Failure(DatabaseFailure(e.toString()));
+  }
+}
+
+// Result handling
+final result = await getUser('123');
+result.fold(
+  (success) {
+    print('User: ${success.name}');
+  },
+  (failure) {
+    print('Error: ${failure.message}');
+  },
+);
+```
+
+### 3. uuid - UUID Generation
+
+- ✅ **SEMPRE usar `uuid`** para geração de identificadores únicos
+- ✅ Use `Uuid().v4()` para gerar UUIDs v4
+- ✅ Use para IDs de entidades quando necessário
+
+**Exemplo:**
+
+```dart
+import 'package:uuid/uuid.dart';
+
+const uuid = Uuid();
+
+// Generate UUID
+final userId = uuid.v4();
+
+// Usage in entities
+class User {
+  final String id;
+  final String name;
+
+  User({
+    String? id,
+    required this.name,
+  }) : id = id ?? uuid.v4();
+}
+```
+
+## ODBC-Specific Patterns
+
+### Database Configuration
+
+Use `DatabaseConfig` to configure database connections:
+
+```dart
+// SQL Server
+final config = DatabaseConfig.sqlServer(
+  driverName: 'SQL Server Native Client 11.0',
+  username: 'sa',
+  password: 'password',
+  database: 'database_name',
+  server: 'SERVER_NAME',
+  port: 1433,
+);
+
+// Other databases (configure accordingly)
+// DatabaseConfig.oracle(...)
+// DatabaseConfig.postgresql(...)
+// DatabaseConfig.mysql(...)
+```
+
+### SQL Command Execution
+
+Use `SqlCommand` for safe parameterized queries:
+
+```dart
+final command = SqlCommand(config);
+await command.connect();
+
+command.commandText = 'SELECT * FROM Table WHERE Id = :id';
+command.param('id').asInt = 1;
+
+await command.open();
+
+while (!command.eof) {
+  print(command.field("Name").asString);
+  command.next();
+}
+
+await command.close();
+```
+
+### Transactions
+
+Use `SqlTransaction` for database transactions:
+
+```dart
+final transaction = SqlTransaction(config);
+
+await transaction.begin();
+
+try {
+  await transaction.execute('UPDATE Table SET Value = :val WHERE Id = :id');
+  await transaction.commit();
+} catch (e) {
+  await transaction.rollback();
+  rethrow;
+}
+```
+
+### Connection Pooling
+
+Use `OdbcConnectionPool` for efficient connection management:
+
+```dart
+final pool = OdbcConnectionPool(
+  config: config,
+  maxConnections: 10,
+);
+
+final connection = await pool.acquire();
+// Use connection...
+await pool.release(connection);
+```
+
+### Safe Select Builder
+
+Use `SafeSelectBuilder` with `TableMetadata` to avoid issues with binary columns:
+
+```dart
+final metadata = TableMetadata(odbcConnection);
+final safeBuilder = SafeSelectBuilder(metadata);
+
+final safeColsResult = await safeBuilder.getSafeColumns('TableName');
+if (safeColsResult.isError()) throw safeColsResult.exceptionOrNull()!;
+final safeCols = safeColsResult.getOrThrow();
+
+// Safe columns exclude IMAGE/VARBINARY automatically
+query.commandText = 'SELECT ${safeCols.join(', ')} FROM TableName';
+```
+
+## Project Structure
+
+```
+lib/
+├── dao/
+│   ├── config/
+│   │   ├── database_config.dart      # DatabaseConfig for connection
+│   │   └── database_type.dart       # Database type enums
+│   ├── driver/
+│   │   ├── database_driver.dart      # Abstract database driver
+│   │   ├── my_odbc.dart           # ODBC driver implementation
+│   │   ├── smart_prepared_statement.dart
+│   │   ├── sql_data_type.dart
+│   │   └── database_error.dart
+│   ├── pool/
+│   │   └── odbc_connection_pool.dart
+│   ├── sql_command.dart              # SqlCommand for queries
+│   ├── sql_transaction.dart         # Transaction management
+│   ├── sql_type_command.dart
+│   ├── sql_valid_command.dart
+│   ├── table_metadata.dart           # Table metadata for safe queries
+│   ├── safe_select_builder.dart      # Safe query builder
+│   └── utils/
+│       └── schema_utils.dart
+└── main.dart
+```
+
+## Dependency Usage Checklist
+
+When creating database-related code:
+
+- [ ] Using `dart_odbc` for ODBC connections
+- [ ] Using `DatabaseConfig` for connection setup
+- [ ] Using `SqlCommand` for queries
+- [ ] Using parameterized queries (avoid SQL injection)
+- [ ] Using `result_dart` for error handling
+- [ ] Using `SqlTransaction` for transactions
+- [ ] Using `TableMetadata` and `SafeSelectBuilder` for safe queries
+- [ ] Using `uuid` for entity IDs when needed
+- [ ] Properly closing connections and releasing resources
+
+## Common Patterns
+
+### Safe Parameterized Query
+
+```dart
+// ✅ Good: Parameterized query
+command.commandText = 'SELECT * FROM Users WHERE Id = :id AND Name = :name';
+command.param('id').asInt = userId;
+command.param('name').asString = userName;
+
+// ❌ Avoid: String concatenation (SQL injection risk)
+command.commandText = 'SELECT * FROM Users WHERE Id = $userId AND Name = "$userName"';
+```
+
+### Result Pattern in DAO
+
+```dart
+Future<Result<List<User>>> getAllUsers() async {
+  try {
+    await _command.connect();
+
+    final users = <User>[];
+    while (!_command.eof) {
+      users.add(User(
+        id: _command.field('Id').asString,
+        name: _command.field('Name').asString,
+      ));
+      _command.next();
+    }
+
+    await _command.close();
+    return Success(users);
+  } on OdbcException catch (e) {
+    await _command.close();
+    return Failure(DatabaseFailure(e.message));
+  } catch (e) {
+    await _command.close();
+    return Failure(ServerFailure(e.toString()));
+  }
+}
+```
+
+## Notes
+
+- This project is a library/utility for ODBC access, not a full application
+- The project focuses on database operations (SELECT, INSERT, UPDATE, DELETE)
+- Result pattern ensures proper error handling without exceptions
+- Safe query building prevents issues with binary columns (IMAGE, VARBINARY)
+- Connection pooling improves performance for multiple database operations

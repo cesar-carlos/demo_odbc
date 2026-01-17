@@ -1,0 +1,214 @@
+---
+description: Clean Architecture - Overview and principles (reusable across projects)
+globs: ["lib/**/*.dart"]
+alwaysApply: true
+---
+
+# Clean Architecture - Overview
+
+Clean Architecture organizes code into concentric layers with strict dependency rules, ensuring the core business logic remains independent of frameworks, databases, and external concerns.
+
+## Core Principles
+
+- **Dependencies point inward**: Outer layers depend on inner layers, never the reverse
+- **Domain is independent**: Pure business logic without framework dependencies
+- **Testability**: Business logic can be tested without external dependencies
+- **Separation of concerns**: Each layer has a single, well-defined responsibility
+
+## Layer Structure
+
+### 1. Domain Layer (Core)
+
+**Responsibility**: Contains pure business logic, entities, use cases, and domain rules.
+
+**Applied Principles**:
+- ✅ **SRP**: Each entity and use case has a single responsibility
+- ✅ **DIP**: Defines interfaces (repositories), not implementations
+- ✅ **Independence**: Does not depend on any other layer
+
+**Components**:
+- **Entities**: Main domain objects with unique identity and business logic
+- **Value Objects**: Immutable objects compared by value (ex: Email, Money)
+- **Repositories**: Interfaces that define contracts for data access
+- **Use Cases**: Isolated, testable business operations with single responsibility
+- **Errors**: Domain-specific exceptions and failures
+
+**Rules**:
+- ❌ NEVER import Flutter, HTTP, or any external framework
+- ❌ NEVER import from `application`, `infrastructure` or `presentation`
+- ✅ Pure Dart classes only
+- ✅ Abstract interfaces for external dependencies
+
+### 2. Application Layer
+
+**Responsibility**: Orchestrates use cases and coordinates data flow between layers.
+
+**Applied Principles**:
+- ✅ **SRP**: Each service coordinates a specific set of use cases
+- ✅ **DIP**: Depends only on Domain interfaces
+- ✅ **OCP**: Extensible through new use cases
+
+**Components**:
+- **Services**: Coordinate multiple use cases and orchestrate complex flows
+- **DTOs**: Objects for data transfer between layers (no business logic)
+- **Mappers**: Convert between domain entities and DTOs
+
+**Rules**:
+- ✅ Can import only from `domain` and `core`
+- ❌ NEVER import from `infrastructure` or `presentation`
+- ✅ Uses Domain interfaces, not implementations
+
+### 3. Infrastructure Layer (Data Layer)
+
+**Responsibility**: Implements interfaces defined in the domain and handles technical details.
+
+**Applied Principles**:
+- ✅ **DIP**: Implements Domain interfaces
+- ✅ **SRP**: Each data source has a single responsibility
+- ✅ **LSP**: Implementations are substitutable by interfaces
+
+**Components**:
+- **Data Sources**: Concrete implementations of data access (API, Local DB, Cache, ODBC)
+- **Repositories**: Repository implementations using datasources
+- **External Services**: Integrations with external APIs or drivers
+- **Models**: Models for serialization/deserialization (may differ from entities)
+
+**Rules**:
+- ✅ Can import from `domain` and `core`
+- ✅ Implements interfaces defined in Domain
+- ❌ NEVER import from `application` or `presentation`
+
+### 4. Presentation Layer
+
+**Responsibility**: User interface and UI state management.
+
+**Applied Principles**:
+- ✅ **SRP**: Each page/controller has a single responsibility
+- ✅ **DIP**: Depends on services/interfaces, not concrete implementations
+- ✅ **ISP**: Specific interfaces for each need
+
+**Components**:
+- **Pages**: Application screens (Stateless/StatefulWidget)
+- **Widgets**: Reusable UI components specific to this layer
+- **Controllers/Providers**: State management (should not contain business logic)
+
+**Rules**:
+- ✅ Can import from `domain`, `application` and `core`
+- ❌ NEVER import from `infrastructure`
+- ✅ Uses Application services or Domain use cases
+- ✅ Controllers only manage state, business logic stays in Domain
+
+### 5. Core (Shared Components)
+
+**Responsibility**: Shared components and general configurations.
+
+**Components**:
+- **Constants**: Fixed values used throughout the application
+- **Utils**: Pure utility functions (no dependencies)
+- **Extensions**: Dart/Flutter class extensions
+- **Theme**: Theme and style configurations
+- **Validation**: Validation schemas
+- **Error Handling**: Common error types and handlers
+
+**Rules**:
+- ✅ Can be imported by any layer
+- ✅ Should not import from `domain`, `application`, `infrastructure` or `presentation`
+
+## Dependency Rules
+
+Dependencies must follow this strict hierarchy:
+
+```
+Presentation → Application → Domain ← Infrastructure
+Core → (can be used by any layer)
+```
+
+### Import Rules
+
+1. **Domain**:
+   - ✅ Can import only from `core`
+   - ❌ NEVER import from `application`, `infrastructure` or `presentation`
+
+2. **Application**:
+   - ✅ Can import from `domain` and `core`
+   - ❌ NEVER import from `infrastructure` or `presentation`
+
+3. **Infrastructure**:
+   - ✅ Can import from `domain` and `core`
+   - ❌ NEVER import from `application` or `presentation`
+
+4. **Presentation**:
+   - ✅ Can import from `domain`, `application` and `core`
+   - ❌ NEVER import from `infrastructure`
+
+5. **Core**:
+   - ✅ Does not import from other business layers
+   - ✅ Can be imported by any layer
+
+## Data Flow Example
+
+1. **Presentation** (UI) calls a **Service** from the **Application** layer
+2. **Service** executes **Use Cases** from the **Domain** layer
+3. **Use Cases** use **Repository** (interface) from the **Domain** layer
+4. **Repository** is implemented in the **Infrastructure** layer
+5. **Repository** uses **Data Sources** to fetch/persist data
+6. **Data Source** returns data that is converted to **Entities** from Domain
+7. **Entities** are converted to **DTOs** if necessary
+8. **DTOs** are returned to **Presentation**
+
+## Folder Structure
+
+```
+lib/
+├── domain/              # Domain Layer (Pure Business Logic)
+│   ├── entities/        # Domain entities (business objects)
+│   ├── value_objects/   # Value objects (immutable, compared by value)
+│   ├── repositories/    # Repository interfaces (contracts)
+│   ├── use_cases/       # Use cases (pure application logic)
+│   └── errors/          # Domain exceptions and errors
+│
+├── application/         # Application Layer (Orchestration)
+│   ├── services/        # Application services (coordinate use cases)
+│   ├── dtos/            # Data Transfer Objects
+│   └── mappers/         # Converters between entities and DTOs
+│
+├── infrastructure/      # Infrastructure Layer (Implementations)
+│   ├── datasources/     # Data sources (API, Local DB, ODBC, etc.)
+│   ├── repositories/    # Repository implementations
+│   ├── external_services/  # External services (APIs, drivers, etc.)
+│   └── models/          # Data models for serialization
+│
+├── presentation/        # Presentation Layer (UI)
+│   ├── pages/          # Application screens
+│   ├── widgets/        # Reusable UI components
+│   └── providers/      # State management
+│
+└── core/               # Core Components (Shared)
+    ├── constants/      # Application constants
+    ├── utils/          # Utility functions
+    ├── extensions/     # Class extensions
+    ├── theme/          # Application theme
+    └── validation/     # Validation schemas
+```
+
+## When to Use Clean Architecture
+
+Use Clean Architecture when:
+- Your app has complex business rules that change independently of UI
+- You need to test business logic without external dependencies
+- Your team is larger and needs clear separation of concerns
+- You expect the codebase to grow significantly
+
+Simplify when:
+- Building a simple app with minimal business logic
+- Team size is small and complexity is manageable
+- Time constraints outweigh architectural benefits
+
+## Benefits
+
+- ✅ **Testability**: Business logic can be tested in isolation
+- ✅ **Maintainability**: Clear separation of concerns
+- ✅ **Scalability**: Structure prepared for growth and new features
+- ✅ **Independence**: Domain independent of frameworks and technologies
+- ✅ **Flexibility**: Easy to swap implementations
+- ✅ **Reusability**: Business logic can be reused in different contexts

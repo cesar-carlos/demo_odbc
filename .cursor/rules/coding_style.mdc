@@ -1,0 +1,517 @@
+---
+description: Dart Style Guide - Dart/Flutter conventions and best practices (2026 update)
+globs: ["lib/**/*.dart", "test/**/*.dart"]
+alwaysApply: true
+---
+
+# Dart Style Guide - Effective Dart (2026)
+
+## Naming Conventions
+
+### Types and Extensions
+
+Use **UpperCamelCase** for class names, enums, typedefs, type parameters, and extension names.
+
+```dart
+class UserService { }
+enum UserRole { }
+typedef UserCallback = void Function(User);
+extension StringExtensions on String { }
+```
+
+### Libraries, Packages, Directories, and Files
+
+Use **lowercase_with_underscores**.
+
+```dart
+// File: user_service.dart
+// Folder: user_services/
+// Package name: my_app_package
+```
+
+### Other Identifiers
+
+Use **lowerCamelCase** for variables, methods, named parameters, and type parameters.
+
+```dart
+String userName = 'John';
+void getUserData() { }
+void createUser(String userName) { }
+class GenericRepository<T> { }
+```
+
+### Constants and Enum Values
+
+Use **lowerCamelCase** for constants and enum values (prefer `const` over `static final`).
+
+Exception: Maintain **SCREAMING_CAPS** only when interoperating with existing code or tools (Java interop, protobuf).
+
+```dart
+const maxRetries = 3;
+const defaultTimeout = Duration(seconds: 30);
+
+// Class constants
+static const String apiUrl = 'https://api.example.com';
+
+// Enums
+enum UserStatus {
+  active,
+  inactive,
+  pending,
+}
+```
+
+### Private Members
+
+Use **underscore prefix** for private members.
+
+```dart
+final String _privateField;
+void _privateMethod() { }
+```
+
+### Avoid Prefix Notation
+
+Don't use Hungarian notation (prefixing type information to variable names).
+
+```dart
+// ❌ Avoid
+String sName;
+int nAge;
+
+// ✅ Prefer
+String userName;
+int age;
+```
+
+### Unused Parameters
+
+Use `_`, `__`, `___`, etc. for unused callback parameters.
+
+```dart
+// ✅ Good: unused parameter marked with _
+Future<void> processItems(List<Item> items) async {
+  for (final _ in items) {
+    // Process item without needing to name it
+  }
+}
+```
+
+## Import Organization
+
+### Import Order
+
+1. `dart:` imports
+2. `package:` imports
+3. Relative imports
+
+Within each section, sort items alphabetically.
+
+### Import Order Example
+
+```dart
+// 1. Dart SDK
+import 'dart:async';
+import 'dart:convert';
+
+// 2. External packages
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:result_dart/result_dart.dart';
+
+// 3. Relative imports
+import '../models/user.dart';
+import 'user_service.dart';
+```
+
+### Export Directives
+
+Place `export` directives after all imports.
+
+```dart
+import 'package:my_app/services/user_service.dart';
+
+export 'models/user.dart';
+export 'user_service.dart';
+```
+
+### Avoid `library` Directive
+
+The `library` directive is a legacy feature and should not be used.
+
+```dart
+// ❌ Avoid
+library user_repository;
+
+// ✅ Prefer (no library directive)
+```
+
+## Types and Null Safety
+
+### Type Declaration
+
+Prefer explicit types for public APIs.
+
+```dart
+// ✅ Good: explicit type
+String getUserName() => 'John';
+
+// ⚠️ Avoid: inference in public APIs
+getUserName() => 'John';
+```
+
+### Null Safety Best Practices
+
+- ✅ Use null safety: avoid `null` when possible
+- ✅ Use `?` only when necessary
+- ✅ Use `!` only when absolutely safe
+- ✅ Prefer `late` for late initialization over nullable `null`
+
+```dart
+// ✅ Good: non-nullable when possible
+String userName = 'John';
+
+// ✅ Good: nullable when necessary
+String? optionalUserName;
+
+// ✅ Good: late for late initialization
+late String userName;
+void init() {
+  userName = 'John';
+}
+
+// ❌ Avoid: unnecessary null
+String? userName = null; // Doesn't need to be nullable if it always has a value
+```
+
+### Initialization
+
+Always initialize variables or use `late`.
+
+```dart
+// ✅ Good
+final String name = 'John';
+late String name;
+
+// ❌ Error: uninitialized variable
+String name; // Error: 'name' must be initialized
+```
+
+## Const and Final
+
+### Use Const
+
+- ✅ Use `const` for values known at compile time
+- ✅ Use `const` constructors when possible for better performance
+- ✅ Use `const` in immutable widgets
+
+```dart
+// ✅ Good: const for fixed values
+const int maxRetries = 3;
+const Duration timeout = Duration(seconds: 30);
+
+// ✅ Good: const constructor
+const Text('Hello');
+
+// ✅ Good: const widget
+class MyWidget extends StatelessWidget {
+  const MyWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Text('Hello');
+  }
+}
+```
+
+### Use Final
+
+- ✅ Use `final` for variables that won't be reassigned
+- ✅ Prefer `final` over `var` when the value doesn't change
+
+```dart
+// ✅ Good: final for immutable values
+final String userName = 'John';
+final List<int> numbers = [1, 2, 3];
+
+// ❌ Avoid: var when final is sufficient
+var userName = 'John'; // Should be final
+```
+
+## Strings
+
+### String Interpolation
+
+Use string interpolation instead of concatenation.
+
+```dart
+// ✅ Good
+String message = 'Hello, $userName!';
+String fullName = '${user.firstName} ${user.lastName}';
+
+// ❌ Avoid
+String message = 'Hello, ' + userName + '!';
+```
+
+### Multiline Strings
+
+Use triple quotes for multiline strings.
+
+```dart
+String longText = '''
+  This is a
+  multiline string
+''';
+```
+
+## Collections
+
+### Lists
+
+- ✅ Use list literals when possible
+- ✅ Prefer `List<T>` over untyped `List`
+
+```dart
+// ✅ Good: explicit type
+List<String> names = ['John', 'Jane'];
+
+// ✅ Good: const list
+const List<String> defaultNames = ['John', 'Jane'];
+
+// ❌ Avoid: untyped
+List names = ['John', 'Jane'];
+```
+
+### Maps
+
+- ✅ Use map literals when possible
+- ✅ Prefer `Map<String, T>` over untyped `Map`
+
+```dart
+// ✅ Good: explicit type
+Map<String, int> scores = {'John': 100, 'Jane': 95};
+
+// ❌ Avoid: untyped
+Map scores = {'John': 100, 'Jane': 95};
+```
+
+### Sets
+
+Use set literals when possible.
+
+```dart
+Set<String> uniqueNames = {'John', 'Jane', 'John'}; // {'John', 'Jane'}
+```
+
+## Functions and Methods
+
+### Positional vs Named Parameters
+
+- ✅ Use positional parameters for required and clear semantics
+- ✅ Use named parameters for optional and better readability
+- ✅ Use optional positional parameters rarely
+
+```dart
+// ✅ Good: required positional parameters
+void createUser(String name, String email) { }
+
+// ✅ Good: optional named parameters
+void createUser({
+  required String name,
+  String? email,
+  int age = 0,
+}) { }
+
+// ✅ Good: optional positional parameters (rarely)
+void createUser(String name, [String? email]) { }
+```
+
+### Arrow Functions
+
+Use arrow functions for simple one-line functions.
+
+```dart
+// ✅ Good: arrow function
+String getUserName() => 'John';
+
+// ✅ Good: full function for complex logic
+String getUserName() {
+  // complex logic
+  return 'John';
+}
+```
+
+### Tear-off for Widgets
+
+- ✅ **NEVER return Widget from a function** - use tear-off instead
+- ✅ Use tear-off to pass widget constructors directly
+- ✅ This improves performance and code clarity
+
+```dart
+// ❌ Bad: returning Widget from function
+Widget buildUserCard(User user) {
+  return UserCard(user: user);
+}
+
+// Usage
+itemBuilder: (context, index) => buildUserCard(users[index])
+
+// ✅ Good: use tear-off
+itemBuilder: UserCard.new
+
+// Or with parameters
+itemBuilder: (context, index) => UserCard(user: users[index])
+
+// ✅ Good: tear-off for named constructors
+builder: UserCard.fromJson
+
+// ✅ Good: tear-off in callbacks
+onTap: () => Navigator.push(context, MaterialPageRoute(builder: UserDetailPage.new))
+```
+
+## Classes
+
+### Constructors
+
+- ✅ Use named constructors for different ways to create instances
+- ✅ Use `super.key` to pass key to widgets
+- ✅ Use `required` for required parameters in named constructors
+
+```dart
+// ✅ Good: named constructor
+class User {
+  final String name;
+  final String email;
+
+  User({required this.name, required this.email});
+
+  User.anonymous() : name = 'Anonymous', email = '';
+
+  User.fromJson(Map<String, dynamic> json)
+      : name = json['name'],
+        email = json['email'];
+}
+
+// ✅ Good: super.key in widgets
+class MyWidget extends StatelessWidget {
+  const MyWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container();
+  }
+}
+```
+
+### Getters and Setters
+
+Prefer getters/setters over methods when appropriate. Use getters for calculated values.
+
+```dart
+class Rectangle {
+  final double width;
+  final double height;
+
+  Rectangle(this.width, this.height);
+
+  // ✅ Good: getter for calculated value
+  double get area => width * height;
+
+  // ✅ Good: getter for derived property
+  bool get isSquare => width == height;
+}
+```
+
+## Dot Shorthands
+
+Use dot shorthands for cascade operations and method calls for cleaner, more readable code.
+
+```dart
+// ✅ Good: cascade notation
+final user = User()
+  ..name = 'John'
+  ..email = 'john@example.com'
+  ..age = 30;
+
+// ✅ Good: cascade with method calls
+final list = <int>[]
+  ..add(1)
+  ..add(2)
+  ..add(3);
+
+// ✅ Good: cascade for builder pattern
+final button = ElevatedButton(
+  onPressed: () {},
+  child: const Text('Click'),
+)..style = ButtonStyle(
+    backgroundColor: MaterialStateProperty.all(Colors.blue),
+  );
+
+// ✅ Good: dot shorthand for method calls
+final numbers = [1, 2, 3];
+numbers.map((n) => n * 2).toList();
+
+// ✅ Good: dot shorthand with null-aware operators
+user?.name?.toUpperCase();
+```
+
+## Formatting
+
+### Use dart format
+
+Always format your code using `dart format` (formerly `dartfmt`). It's the official formatter.
+
+### Line Length
+
+Prefer lines at **80 characters or fewer**. Longer lines reduce readability.
+
+### Curly Braces
+
+Use braces for all blocks (`if`, `else`, `for`, etc.). Only omit braces for single-line `if` without `else` if the whole statement fits on one line.
+
+```dart
+// ✅ Good: always use braces
+if (condition) {
+  doSomething();
+}
+
+// ✅ Good: omit braces for single-line if without else
+if (condition) doSomething();
+```
+
+## Show/Hide
+
+Use `show` to import only what's necessary.
+
+```dart
+import 'package:my_package/my_package.dart' show User, UserService;
+```
+
+## General Best Practices
+
+### Avoid Dead Code
+
+- ✅ Remove unused commented code
+- ✅ Remove unused imports
+- ✅ Remove unused variables
+
+### Performance
+
+- ✅ Use `const` constructors when possible
+- ✅ Avoid unnecessary rebuilds
+- ✅ Use `const` widgets when possible
+
+### Readability
+
+- ✅ Keep functions small and focused
+- ✅ Use descriptive names
+- ✅ Avoid excessive nesting depth
+- ✅ Break long lines (maximum ~80 characters)
+
+### Avoid Leading Underscores
+
+Don't use leading underscores for non-private identifiers (locals, parameters, library prefixes) - underscores are reserved for privacy at top-level or inside libraries.
+
+## References
+
+For more details, see the official [Effective Dart: Style Guide](https://dart.dev/effective-dart/style).

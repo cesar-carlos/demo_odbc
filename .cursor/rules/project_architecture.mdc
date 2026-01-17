@@ -1,0 +1,406 @@
+---
+description: Project Architecture - DAO/ODBC structure for database access
+globs: ["lib/**/*.dart"]
+alwaysApply: true
+---
+
+# Project Architecture - demo_odbc
+
+This project implements a Database Access Object (DAO) pattern with ODBC for database connectivity, providing a clean abstraction layer for SQL Server and other ODBC-compatible databases.
+
+## Architecture Overview
+
+The project follows a modular DAO pattern focused on:
+- Database connection management via ODBC
+- Safe SQL execution with parameterized queries
+- Connection pooling for performance
+- Transaction support
+- Metadata-based safe query building
+- Error handling with Result pattern
+
+## Project Structure
+
+```
+lib/
+├── dao/
+│   ├── config/
+│   │   ├── database_config.dart      # Database configuration (connection strings, credentials)
+│   │   └── database_type.dart       # Database type enum (SQL Server, Oracle, etc.)
+│   ├── driver/
+│   │   ├── database_driver.dart      # Abstract database driver interface
+│   │   ├── my_odbc.dart           # ODBC driver implementation
+│   │   ├── smart_prepared_statement.dart  # Prepared statement management
+│   │   ├── sql_data_type.dart      # SQL data type mappings
+│   │   └── database_error.dart    # Database error definitions
+│   ├── pool/
+│   │   └── odbc_connection_pool.dart  # Connection pooling for performance
+│   ├── sql_command.dart              # Main command execution class
+│   ├── sql_transaction.dart         # Transaction management
+│   ├── sql_type_command.dart        # Type-safe SQL commands
+│   ├── sql_valid_command.dart       # Validation for SQL commands
+│   ├── table_metadata.dart           # Table metadata for schema inspection
+│   ├── safe_select_builder.dart      # Safe query builder (avoids binary columns)
+│   └── utils/
+│       └── schema_utils.dart       # Schema utility functions
+└── main.dart
+```
+
+## Core Components
+
+### 1. Database Configuration (`dao/config/`)
+
+**Purpose**: Centralized database connection configuration
+
+**Classes**:
+- `DatabaseConfig`: Configuration for different database types
+  - `sqlServer()` - SQL Server configuration
+  - `oracle()` - Oracle configuration
+  - `postgresql()` - PostgreSQL configuration
+  - `mysql()` - MySQL configuration
+- `DatabaseType`: Enum for supported database types
+
+**Example**:
+```dart
+final config = DatabaseConfig.sqlServer(
+  driverName: 'SQL Server Native Client 11.0',
+  username: 'sa',
+  password: 'password',
+  database: 'database_name',
+  server: 'SERVER_NAME',
+  port: 1433,
+);
+```
+
+### 2. Database Driver (`dao/driver/`)
+
+**Purpose**: Abstract ODBC driver with common interface
+
+**Classes**:
+- `DatabaseDriver`: Abstract interface for database operations
+- `MyOdbc`: ODBC driver implementation
+- `SmartPreparedStatement`: Prepared statement caching and management
+- `SqlDataType`: Enum for SQL data types (VARCHAR, INT, DATETIME, etc.)
+- `DatabaseError`: Error handling for database operations
+
+**Pattern**: Strategy pattern for different database types
+
+### 3. Connection Pool (`dao/pool/`)
+
+**Purpose**: Manage database connections efficiently
+
+**Classes**:
+- `OdbcConnectionPool`: Connection pool with configurable size
+
+**Benefits**:
+- Reduces connection overhead
+- Limits maximum connections
+- Provides connection lifecycle management
+
+**Usage**:
+```dart
+final pool = OdbcConnectionPool(
+  config: config,
+  maxConnections: 10,
+);
+
+final connection = await pool.acquire();
+// Use connection...
+await pool.release(connection);
+```
+
+### 4. SQL Command (`sql_command.dart`)
+
+**Purpose**: Execute SQL queries with parameters
+
+**Key Features**:
+- Parameterized queries (SQL injection protection)
+- Type-safe parameter binding
+- Result iteration
+- Resource management (auto-close)
+
+**Methods**:
+- `connect()`: Open database connection
+- `open()`: Execute SELECT query
+- `execute()`: Execute INSERT/UPDATE/DELETE
+- `param(name)`: Get parameter reference for binding
+- `field(name)`: Get field from current row
+- `next()`: Move to next row
+- `close()`: Close command and release resources
+
+**Example**:
+```dart
+final command = SqlCommand(config);
+await command.connect();
+
+command.commandText = 'SELECT * FROM Users WHERE Id = :id';
+command.param('id').asInt = userId;
+
+await command.open();
+
+while (!command.eof) {
+  print(command.field('Name').asString);
+  command.next();
+}
+
+await command.close();
+```
+
+### 5. Transaction (`sql_transaction.dart`)
+
+**Purpose**: Manage database transactions
+
+**Key Features**:
+- Begin/commit/rollback
+- Automatic rollback on errors
+- Nested transaction support
+
+**Methods**:
+- `begin()`: Start transaction
+- `commit()`: Commit transaction
+- `rollback()`: Rollback transaction
+
+**Example**:
+```dart
+final transaction = SqlTransaction(config);
+
+await transaction.begin();
+
+try {
+  await transaction.execute('UPDATE Table SET Value = :val WHERE Id = :id');
+  await transaction.commit();
+} catch (e) {
+  await transaction.rollback();
+  rethrow;
+}
+```
+
+### 6. Table Metadata (`table_metadata.dart`)
+
+**Purpose**: Query database schema information
+
+**Key Features**:
+- Get table columns
+- Identify data types
+- Detect binary columns (IMAGE, VARBINARY)
+
+**Usage**:
+```dart
+final metadata = TableMetadata(odbcConnection);
+final columns = await metadata.getColumns('TableName');
+
+for (final column in columns) {
+  print('${column.name}: ${column.type}');
+}
+```
+
+### 7. Safe Select Builder (`safe_select_builder.dart`)
+
+**Purpose**: Build safe SELECT queries that exclude problematic columns
+
+**Problem Solved**: ODBC error HY001 when selecting IMAGE/VARBINARY columns
+
+**Key Features**:
+- Auto-detect binary columns from metadata
+- Exclude problematic columns
+- Provide safe column list
+
+**Usage**:
+```dart
+final metadata = TableMetadata(odbcConnection);
+final safeBuilder = SafeSelectBuilder(metadata);
+
+final safeColsResult = await safeBuilder.getSafeColumns('TableName');
+if (safeColsResult.isError()) throw safeColsResult.exceptionOrNull()!;
+final safeCols = safeColsResult.getOrThrow();
+
+// Safe columns exclude IMAGE/VARBINARY automatically
+query.commandText = 'SELECT ${safeCols.join(', ')} FROM TableName';
+```
+
+### 8. Utilities (`dao/utils/`)
+
+**Purpose**: Helper functions for schema operations
+
+**Classes**:
+- `SchemaUtils`: Schema-related utilities
+
+## Data Flow
+
+1. **Configuration**: User creates `DatabaseConfig` for connection
+2. **Command Creation**: User creates `SqlCommand` with config
+3. **Connection**: `connect()` opens connection (uses pool internally)
+4. **Query Setup**: Set command text and bind parameters
+5. **Execution**: Call `open()` for SELECT or `execute()` for INSERT/UPDATE/DELETE
+6. **Result Processing**: Iterate results with `field()` and `next()`
+7. **Cleanup**: Call `close()` to release resources
+
+## Error Handling
+
+Using `result_dart` pattern for error handling:
+
+```dart
+Future<Result<List<User>>> getUsers() async {
+  try {
+    await command.connect();
+
+    final users = <User>[];
+    while (!command.eof) {
+      users.add(User(
+        id: command.field('Id').asString,
+        name: command.field('Name').asString,
+      ));
+      command.next();
+    }
+
+    await command.close();
+    return Success(users);
+  } on OdbcException catch (e) {
+    await command.close();
+    return Failure(DatabaseError(e.message));
+  } catch (e) {
+    await command.close();
+    return Failure(ServerError(e.toString()));
+  }
+}
+```
+
+## Patterns Used
+
+### DAO Pattern
+Data Access Objects encapsulate database operations:
+- Single responsibility (only database access)
+- Easy to test with mocks
+- Separates data logic from business logic
+
+### Builder Pattern
+`SafeSelectBuilder` builds safe SQL queries:
+- Step-by-step query construction
+- Validation at each step
+- Metadata-driven decisions
+
+### Strategy Pattern
+`DatabaseDriver` allows different database strategies:
+- Abstract common operations
+- Database-specific implementations
+- Easy to add new database types
+
+### Object Pool Pattern
+`OdbcConnectionPool` manages connections:
+- Reuse expensive resources
+- Limit resource usage
+- Improve performance
+
+## Best Practices
+
+### SQL Injection Prevention
+
+✅ **Always use parameterized queries**
+
+```dart
+// ✅ Good: Parameterized query
+command.commandText = 'SELECT * FROM Users WHERE Id = :id';
+command.param('id').asInt = userId;
+
+// ❌ Avoid: String concatenation
+command.commandText = 'SELECT * FROM Users WHERE Id = $userId';
+```
+
+### Resource Management
+
+✅ **Always close connections and commands**
+
+```dart
+try {
+  await command.open();
+  // Use command...
+} finally {
+  await command.close();
+}
+```
+
+### Safe Query Building
+
+✅ **Use SafeSelectBuilder to avoid binary column errors**
+
+```dart
+final metadata = TableMetadata(odbcConnection);
+final safeBuilder = SafeSelectBuilder(metadata);
+final safeCols = await safeBuilder.getSafeColumns('TableName');
+```
+
+### Result Pattern
+
+✅ **Use Result<T> for error handling**
+
+```dart
+final result = await getUsers();
+result.fold(
+  (users) {
+    // Handle success
+    print('Found ${users.length} users');
+  },
+  (error) {
+    // Handle error
+    print('Error: ${error.message}');
+  },
+);
+```
+
+## Extension Points
+
+### Adding New Database Types
+
+1. Add enum value to `DatabaseType`
+2. Add factory method to `DatabaseConfig`
+3. Implement specific driver logic in `MyOdbc`
+
+### Adding New SQL Commands
+
+1. Extend `SqlCommand` or `SqlTransaction`
+2. Add type-safe methods in `SqlTypeCommand`
+3. Update validation in `SqlValidCommand`
+
+### Adding New Utilities
+
+1. Add utility class to `dao/utils/`
+2. Export from `dao/utils/utils.dart` (if barrel file exists)
+
+## Testing Strategy
+
+### Unit Tests
+
+Test individual components:
+- Configuration parsing
+- SQL command building
+- Parameter binding
+- Result handling
+
+### Integration Tests
+
+Test with real database:
+- Connection operations
+- Query execution
+- Transaction behavior
+- Connection pooling
+
+### Mocks
+
+Use mocks for:
+- Database driver
+- Connection pool
+- Table metadata
+
+## Dependencies
+
+See `project_dependencies.mdc` for specific dependencies:
+- `dart_odbc` - ODBC driver
+- `result_dart` - Error handling
+- `uuid` - Unique identifiers
+
+## Notes
+
+- This is a library/utility project, not a full application
+- Focus is on database operations (SELECT, INSERT, UPDATE, DELETE)
+- No UI components or presentation layer
+- No business logic layer (pure data access)
+- Can be used as a dependency in other projects

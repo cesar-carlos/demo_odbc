@@ -1,0 +1,291 @@
+---
+description: Cursor Rules Index - Available rules and guidelines
+alwaysApply: true
+---
+
+# Cursor Rules
+
+This folder contains **Project Rules** for Cursor, which are automatically applied when working on project files. The rules provide persistent context for the AI, ensuring code consistency and quality.
+
+## How They Work
+
+Rules are `.mdc` (Markdown Cursor) files that contain:
+
+- **Frontmatter YAML**: Metadata about the rule
+  - `description`: Brief description of the rule
+  - `globs`: File patterns to which the rule applies
+  - `alwaysApply`: Defines whether the rule should always be applied
+
+- **Markdown Content**: The rules and guidelines themselves
+
+## Important Behavioral Rules
+
+### Commits and Documentation
+
+- ❌ **NEVER make git commits** unless explicitly requested by the user
+- ❌ **NEVER create documentation** (README.md, comments, etc.) unless explicitly requested
+- ❌ **NEVER push to repository** unless explicitly requested
+- ✅ **ONLY commit/push/document** when the user explicitly asks for it
+- ✅ Always ask for confirmation before committing or pushing changes
+- ✅ Code should be self-explanatory through clear naming
+
+These rules ensure that the AI assistant respects user control over version control and documentation decisions.
+
+## Available Rules
+
+### Generic Rules (Reusable Across Projects)
+
+#### 1. `architecture.mdc`
+
+**Applied to**: `lib/**/*.dart`
+
+Clean Architecture overview and principles:
+- Clean Architecture principles
+- Layer structure (Domain, Application, Infrastructure, Presentation)
+- Dependency rules between layers
+- When to use Clean Architecture
+- Benefits of Clean Architecture
+
+**Use**: General architectural guidance for any Flutter/Dart project using Clean Architecture.
+
+#### 2. `clean_architecture.mdc`
+
+**Applied to**: `lib/**/*.dart`
+
+Clean Architecture dependency rules:
+- Dependency rules between layers
+- Import rules for each layer
+- Verification checklist
+- Examples of correct/incorrect imports
+
+**Use**: Enforce dependency rules in Clean Architecture projects.
+
+#### 3. `solid_principles.mdc`
+
+**Applied to**: `lib/**/*.dart`
+
+SOLID principles detailed guide:
+- Single Responsibility Principle (SRP)
+- Open/Closed Principle (OCP)
+- Liskov Substitution Principle (LSP)
+- Interface Segregation Principle (ISP)
+- Dependency Inversion Principle (DIP)
+- Examples for each principle
+- Common violations
+
+**Use**: Ensure SOLID compliance in code design.
+
+#### 4. `coding_style.mdc`
+
+**Applied to**: `lib/**/*.dart`, `test/**/*.dart`
+
+Dart style guide (2026 updated):
+- Naming conventions (Effective Dart 2026)
+- Import organization
+- Types and null safety
+- Const and final usage
+- Functions and methods
+- Classes and constructors
+- Dot shorthands
+- Formatting guidelines
+- Tear-off for widgets
+- Line length recommendations
+- Use of dart format
+
+**Use**: Maintain consistent Dart coding style based on latest Effective Dart guidelines.
+
+#### 5. `coding_conventions.mdc`
+
+**Applied to**: `lib/**/*.dart`
+
+Coding conventions and patterns:
+- Naming for classes, methods, variables, files
+- Use case structure
+- Repository interface and implementation
+- Error handling with result_dart
+- Dependency injection patterns
+- Import organization
+- Document only when requested
+
+**Use**: General coding patterns and conventions for any Dart project.
+
+#### 6. `null_safety.mdc`
+
+**Applied to**: `lib/**/*.dart`
+
+Null safety best practices:
+- Nullable/non-nullable type declaration
+- Variable initialization
+- Null checks and null-aware operators
+- Nullable collections
+- Functions and methods with null safety
+- External APIs and JSON parsing
+- Validation and documentation
+
+**Use**: Ensure proper null safety usage throughout the codebase.
+
+#### 7. `testing.mdc`
+
+**Applied to**: `test/**/*.dart`
+
+Testing patterns and best practices:
+- Unit test structure
+- Widget tests
+- AAA pattern (Arrange, Act, Assert)
+- Test naming conventions
+- Isolation and mocking
+- Coverage recommendations
+
+**Use**: Write clean, maintainable tests with proper structure.
+
+#### 8. `flutter_widgets.mdc`
+
+**Applied to**: `lib/presentation/**/*.dart`, `lib/shared/**/*.dart`
+
+Flutter widgets best practices:
+- Stateless vs StatefulWidget
+- Performance and optimization
+- Const widgets
+- Widget composition
+- Layout and responsive design
+- Theming and navigation
+- State management
+
+**Use**: Build efficient, reusable Flutter widgets with best practices.
+
+#### 9. `general_rules.mdc`
+
+**Applied to**: `lib/**/*.dart`, `test/**/*.dart`
+
+General project rules:
+- **DO NOT create documentation automatically** (only when requested)
+- **DO NOT create documentation files** without explicit request
+- **DO NOT add unnecessary comments** - code should be self-explanatory
+- **Comments only to explain "why", not "what"**
+- Self-explanatory code through clear naming
+- Avoid magic numbers - use named constants
+- Keep code clean and maintainable
+
+**Use**: General guidelines for writing clean, self-explanatory code.
+
+### Project-Specific Rules (demo_odbc)
+
+#### 10. `project_dependencies.mdc`
+
+**Applied to**: `lib/**/*.dart`, `pubspec.yaml`
+
+Project-specific dependencies for ODBC access:
+- `dart_odbc` - ODBC database access
+- `result_dart` - Error handling
+- `uuid` - UUID generation
+- Database configuration patterns
+- SQL command execution patterns
+- Transaction management
+- Connection pooling
+- Safe select builder (avoids binary column errors)
+
+**Use**: This is specific to demo_odbc project for ODBC database access.
+
+#### 11. `project_architecture.mdc`
+
+**Applied to**: `lib/**/*.dart`
+
+Project-specific architecture for DAO pattern:
+- DAO pattern with ODBC
+- Project structure (dao/ folder organization)
+- Core components (config, driver, pool, commands, etc.)
+- Data flow
+- Patterns used (DAO, Builder, Strategy, Object Pool)
+- Best practices for ODBC access
+- Extension points
+
+**Use**: This is specific to demo_odbc project architecture.
+
+## Rules Hierarchy
+
+```
+Generic Rules (Reusable)
+├── architecture.mdc (Clean Architecture overview)
+├── clean_architecture.mdc (Dependency rules)
+├── solid_principles.mdc (SOLID principles)
+├── coding_style.mdc (Dart style 2026)
+├── coding_conventions.mdc (Coding patterns)
+├── null_safety.mdc (Null safety)
+├── testing.mdc (Testing patterns)
+├── flutter_widgets.mdc (Flutter widgets)
+└── general_rules.mdc (General guidelines)
+
+Project-Specific Rules (demo_odbc)
+├── project_dependencies.mdc (dart_odbc, result_dart, uuid)
+└── project_architecture.mdc (DAO/ODBC architecture)
+```
+
+## Creating New Rules
+
+To create a new rule:
+
+1. Create a `.mdc` file in `.cursor/rules/` folder
+2. Add YAML frontmatter:
+   ```yaml
+   ---
+   description: Rule description
+   globs: ["pattern/**/*.dart"]
+   alwaysApply: true
+   ---
+   ```
+3. Add the rule content in Markdown
+
+## Rule Example
+
+```mdc
+---
+description: Example rule for validation
+globs: ["lib/domain/**/*.dart"]
+alwaysApply: true
+---
+
+# Validation Rule
+
+- All entities must validate their data in the constructor
+- Value objects must throw specific exceptions for invalid values
+- Use cases must validate parameters before executing
+```
+
+## Copying Rules to Other Projects
+
+When copying these rules to other projects:
+
+### Keep Generic Rules
+
+These are reusable across any Flutter/Dart project:
+- `architecture.mdc` - Clean Architecture overview
+- `clean_architecture.mdc` - Dependency rules
+- `solid_principles.mdc` - SOLID principles
+- `coding_style.mdc` - Dart style guide (2026)
+- `coding_conventions.mdc` - Coding conventions
+- `null_safety.mdc` - Null safety
+- `testing.mdc` - Testing patterns
+- `flutter_widgets.mdc` - Flutter widgets
+- `general_rules.mdc` - General guidelines
+
+### Replace Project-Specific Rules
+
+Remove or replace project-specific rules:
+- `project_dependencies.mdc` - Replace with your project's dependencies
+- `project_architecture.mdc` - Replace with your project's architecture
+
+### Customize as Needed
+
+Adjust rules based on:
+- Your project's architecture (Clean Architecture, MVVM, etc.)
+- Your project's dependencies (state management, routing, etc.)
+- Your team's preferences and conventions
+- Specific requirements of your domain
+
+## References
+
+- [Cursor Documentation on Rules](https://docs.cursor.com/en/context/rules)
+- [Effective Dart: Style Guide](https://dart.dev/effective-dart/style)
+- [Clean Architecture](https://blog.cleancoder.com/uncle-bobs-clean-architecture.html)
+- [SOLID Principles](https://en.wikipedia.org/wiki/SOLID)
+- [Flutter Architecture](https://docs.flutter.dev/app-architecture)
