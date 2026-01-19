@@ -2,6 +2,27 @@ import 'package:result_dart/result_dart.dart';
 
 import 'package:demo_odbc/dao/table_metadata.dart';
 
+class _CacheConstants {
+  static const Duration cacheExpiration = Duration(minutes: 8);
+  static const int minQueryLength = 10;
+}
+
+class _VarcharSizeConstants {
+  static const String intSize = '11';
+  static const String bigintSize = '20';
+  static const String smallintSize = '6';
+  static const String tinyintSize = '3';
+  static const String bitSize = '1';
+  static const String moneySize = '50';
+  static const String decimalSize = '50';
+  static const String floatSize = '50';
+  static const String datetimeSize = '50';
+  static const String dateSize = '10';
+  static const String timeSize = '16';
+  static const String maxSize = 'MAX';
+  static const String defaultSize = '2000';
+}
+
 class _SelectInfo {
   final bool isSelectAll;
   final List<String> columns;
@@ -26,7 +47,7 @@ class _CacheEntry {
         timestamp = DateTime.now();
 
   bool get isValid {
-    return DateTime.now().difference(timestamp) < const Duration(minutes: 8);
+    return DateTime.now().difference(timestamp) < _CacheConstants.cacheExpiration;
   }
 }
 
@@ -105,7 +126,7 @@ class SqlSelectInterceptor {
 
   Future<Result<String>> interceptSelect(String query) async {
     final trimmedQuery = query.trim();
-    if (trimmedQuery.length < 10) {
+    if (trimmedQuery.length < _CacheConstants.minQueryLength) {
       return Success(query);
     }
 
@@ -134,7 +155,7 @@ class SqlSelectInterceptor {
 
   _SelectInfo? _parseSelect(String query) {
     final trimmedQuery = query.trim();
-    if (trimmedQuery.length < 10) return null;
+    if (trimmedQuery.length < _CacheConstants.minQueryLength) return null;
 
     final upperQuery = trimmedQuery.toUpperCase();
     if (!upperQuery.startsWith('SELECT')) return null;
@@ -170,6 +191,11 @@ class SqlSelectInterceptor {
     );
   }
 
+  bool _hasCast(String column) {
+    final upperColumn = column.toUpperCase();
+    return upperColumn.contains('CAST(') || upperColumn.contains('CONVERT(');
+  }
+
   Future<Result<String>> _applyCastToColumns(
     List<String> columns,
     String tableName,
@@ -191,16 +217,49 @@ class SqlSelectInterceptor {
       if (i > 0) buffer.write(', ');
 
       final cleanCol = columns[i].trim();
-      final colInfo = columnMap[cleanCol];
+
+      if (_hasCast(cleanCol)) {
+        buffer.write(cleanCol);
+        continue;
+      }
+
+      final columnName = _extractColumnName(cleanCol);
+      final colInfo = columnMap[columnName];
 
       if (colInfo != null) {
         buffer.write(_getCastExpression(colInfo));
       } else {
-        buffer.write('CAST($cleanCol AS VARCHAR(MAX)) AS $cleanCol');
+        buffer.write('CAST($cleanCol AS VARCHAR(${_VarcharSizeConstants.maxSize})) AS $cleanCol');
       }
     }
 
     return Success('SELECT ${buffer.toString()} FROM $tableName $restOfQuery');
+  }
+
+  String _extractColumnName(String column) {
+    var result = column.trim();
+
+    final aliasPattern = RegExp(r'\s+AS\s+\w+', caseSensitive: false);
+    result = result.replaceAll(aliasPattern, '').trim();
+
+    final dotIndex = result.lastIndexOf('.');
+    if (dotIndex >= 0 && dotIndex < result.length - 1) {
+      result = result.substring(dotIndex + 1).trim();
+    }
+
+    final words = result.split(RegExp(r'\s+'));
+    if (words.length > 1) {
+      final lastWord = words.last;
+      if (!lastWord.contains('(') &&
+          !lastWord.contains('[') &&
+          !lastWord.contains(')') &&
+          !lastWord.contains(']') &&
+          !lastWord.contains('.')) {
+        result = words.sublist(0, words.length - 1).join(' ').trim();
+      }
+    }
+
+    return result;
   }
 
   Future<Result<String>> _applyCastToAllColumns(
@@ -237,7 +296,7 @@ class SqlSelectInterceptor {
     final typeInfo = _TypeCache.getTypeInfo(type);
 
     if (typeInfo.isBinary) {
-      return 'CAST($name AS VARCHAR(MAX)) AS $name';
+      return 'CAST($name AS VARBINARY(${_VarcharSizeConstants.maxSize})) AS $name';
     }
 
     if (typeInfo.isUnicode) {
@@ -259,7 +318,7 @@ class SqlSelectInterceptor {
     final typeInfo = _TypeCache.getTypeInfo(type);
 
     if (typeInfo.isBinary) {
-      return 'MAX';
+      return _VarcharSizeConstants.maxSize;
     }
 
     final rawLength = col['length'];
@@ -274,41 +333,41 @@ class SqlSelectInterceptor {
     switch (typeInfo.lowerType) {
       case 'int':
       case 'integer':
-        return '11';
+        return _VarcharSizeConstants.intSize;
       case 'bigint':
-        return '20';
+        return _VarcharSizeConstants.bigintSize;
       case 'smallint':
-        return '6';
+        return _VarcharSizeConstants.smallintSize;
       case 'tinyint':
-        return '3';
+        return _VarcharSizeConstants.tinyintSize;
       case 'bit':
-        return '1';
+        return _VarcharSizeConstants.bitSize;
       case 'money':
       case 'smallmoney':
-        return '50';
+        return _VarcharSizeConstants.moneySize;
       case 'decimal':
       case 'numeric':
-        return '50';
+        return _VarcharSizeConstants.decimalSize;
       case 'float':
       case 'real':
-        return '50';
+        return _VarcharSizeConstants.floatSize;
       case 'datetime':
       case 'datetime2':
       case 'smalldatetime':
-        return '50';
+        return _VarcharSizeConstants.datetimeSize;
       case 'date':
-        return '10';
+        return _VarcharSizeConstants.dateSize;
       case 'time':
-        return '16';
+        return _VarcharSizeConstants.timeSize;
       case 'nvarchar':
       case 'varchar':
       case 'nchar':
       case 'char':
       case 'text':
       case 'ntext':
-        return 'MAX';
+        return _VarcharSizeConstants.maxSize;
       default:
-        return '2000';
+        return _VarcharSizeConstants.defaultSize;
     }
   }
 }

@@ -40,11 +40,8 @@ Future<void> selectExemplo() async {
     // 2. Montar query manual adicionando uma coluna específica se necessário
     // OBS: Se adicionar campo IMAGE/VARBINARY aqui, cuidado com o erro HY001!
     query.commandText = '''
-      SELECT 
-        CAST(CodCliente AS VARCHAR(18)) AS CodCliente, 
-        CAST(Nome AS VARCHAR(100)) AS Nome, 
-        CAST(DataCadastro AS VARCHAR(18)) AS DataCadastro
-      FROM Cliente WITH (NOLOCK)
+      SELECT *
+      FROM Cliente
       WHERE CodCliente > :CodCliente
     ''';
 
