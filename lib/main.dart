@@ -9,7 +9,6 @@ import 'package:demo_odbc/dao/table_metadata.dart';
 
 void main() async {
   await selectExemplo();
-  //await updateExemplo();
   exit(0);
 }
 
@@ -42,7 +41,9 @@ Future<void> selectExemplo() async {
     // OBS: Se adicionar campo IMAGE/VARBINARY aqui, cuidado com o erro HY001!
     query.commandText = '''
       SELECT 
-        CodCliente, Nome, Observacao 
+        CAST(CodCliente AS VARCHAR(18)) AS CodCliente, 
+        CAST(Nome AS VARCHAR(100)) AS Nome, 
+        CAST(DataCadastro AS VARCHAR(18)) AS DataCadastro
       FROM Cliente WITH (NOLOCK)
       WHERE CodCliente > :CodCliente
     ''';

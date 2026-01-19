@@ -72,5 +72,4 @@ enum SqlDataType {
         return SqlDataType.unknown;
     }
   }
-
 }

@@ -9,10 +9,13 @@ import 'package:demo_odbc/dao/sql_valid_command.dart';
 import 'package:demo_odbc/dao/sql_type_command.dart';
 import 'package:demo_odbc/dao/sql_transaction.dart';
 import 'package:demo_odbc/dao/utils/schema_utils.dart';
+import 'package:demo_odbc/dao/sql_select_interceptor.dart';
+import 'package:demo_odbc/dao/table_metadata.dart';
 
 class SqlCommand {
   final DatabaseDriver odbc;
   late final SchemaUtils schema;
+  late final SqlSelectInterceptor _selectInterceptor;
   String? commandText;
   final List<SqlTypeCommand> _params = [];
   List<Map<String, dynamic>> _result = [];
@@ -36,6 +39,7 @@ class SqlCommand {
         ) {
     transaction = SqlTransaction(odbc);
     schema = SchemaUtils(odbc);
+    _selectInterceptor = SqlSelectInterceptor(TableMetadata(odbc));
   }
 
   SqlTypeCommand param(String name) {
@@ -88,6 +92,14 @@ class SqlCommand {
             odbc.type == DatabaseType.sybaseAnywhere) {
           query = _addNoLock(query);
         }
+      }
+
+      if (SqlValidCommand.isSelectQuery(query)) {
+        final interceptedResult = await _selectInterceptor.interceptSelect(query);
+        if (interceptedResult.isError()) {
+          return Failure(interceptedResult.exceptionOrNull()!);
+        }
+        query = interceptedResult.getOrThrow();
       }
 
       final preparedResult = _substituteParameters(query);
@@ -166,7 +178,16 @@ class SqlCommand {
     _currentIndex = -1;
     _currentRecord = {};
 
-    return _substituteParameters(commandText!).fold(
+    var queryToProcess = commandText!;
+    if (SqlValidCommand.isSelectQuery(queryToProcess)) {
+      final interceptedResult = await _selectInterceptor.interceptSelect(queryToProcess);
+      if (interceptedResult.isError()) {
+        return Failure(interceptedResult.exceptionOrNull()!);
+      }
+      queryToProcess = interceptedResult.getOrThrow();
+    }
+
+    return _substituteParameters(queryToProcess).fold(
       (prepared) async {
         if (_useReadUncommitted) {
           await odbc.execute(_getReadUncommittedCommand());
