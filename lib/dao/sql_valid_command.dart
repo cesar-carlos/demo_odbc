@@ -1,7 +1,7 @@
 class SqlValidCommand {
   static void validateConnection(bool isConnected) {
     if (!isConnected) {
-      throw Exception('Conexão não estabelecida. Chame connect() primeiro.');
+      throw Exception('Connection not established. Call connect() first.');
     }
   }
 

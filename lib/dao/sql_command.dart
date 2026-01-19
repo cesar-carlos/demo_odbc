@@ -97,7 +97,8 @@ class SqlCommand {
       }
 
       if (SqlValidCommand.isSelectQuery(query)) {
-        final interceptedResult = await _selectInterceptor.interceptSelect(query);
+        final interceptedResult =
+            await _selectInterceptor.interceptSelect(query);
         if (interceptedResult.isError()) {
           return Failure(interceptedResult.exceptionOrNull()!);
         }
@@ -112,7 +113,7 @@ class SqlCommand {
 
       return await odbc.executeCursor(prepared.sql, params: prepared.params);
     } catch (e, s) {
-      return Failure(Exception('Erro ao abrir stream: $e\nStack: $s'));
+      return Failure(Exception('Error opening stream: $e\nStack: $s'));
     }
   }
 
@@ -190,7 +191,8 @@ class SqlCommand {
 
     var queryToProcess = commandText!;
     if (SqlValidCommand.isSelectQuery(queryToProcess)) {
-      final interceptedResult = await _selectInterceptor.interceptSelect(queryToProcess);
+      final interceptedResult =
+          await _selectInterceptor.interceptSelect(queryToProcess);
       if (interceptedResult.isError()) {
         return Failure(interceptedResult.exceptionOrNull()!);
       }
@@ -271,19 +273,20 @@ class SqlCommand {
         final disconnectResult = await odbc.disconnect();
         if (disconnectResult.isError()) {
           final error = disconnectResult.exceptionOrNull();
-          final errorMessage = error?.toString() ?? 'Erro desconhecido';
-          
+          final errorMessage = error?.toString() ?? 'Unknown error';
+
           if (errorMessage.contains('already closed') ||
               errorMessage.contains('connection closed') ||
               errorMessage.contains('Lost connection')) {
-            debugPrint('Aviso: Conexão já estava fechada. Continuando...');
+            debugPrint('Warning: Connection was already closed. Continuing...');
           } else {
-            debugPrint('Aviso ao desconectar: $errorMessage');
+            debugPrint('Warning while disconnecting: $errorMessage');
           }
         }
       }
     } catch (e) {
-      debugPrint('Aviso ao fechar conexão (pode já estar fechada): $e');
+      debugPrint(
+          'Warning while closing connection (may already be closed): $e');
     } finally {
       _currentIndex = -1;
       _currentRecord = {};
@@ -352,7 +355,7 @@ class SqlCommand {
         totalAffected += batch.length;
       } else {
         return Failure(result.exceptionOrNull() ??
-            Exception('Erro desconhecido no Bulk Insert'));
+            Exception('Unknown error in Bulk Insert'));
       }
     }
 

@@ -7,7 +7,7 @@ abstract class DatabaseDriver {
   Future<Result<Unit>> connect();
 
   /// Executa uma query SQL e retorna os resultados como uma lista.
-  /// [params] é opcional para uso de Prepared Statements nativos (v6).
+  /// [params] is optional for native Prepared Statements usage (v6).
   Future<Result<List<Map<String, dynamic>>>> execute(String query,
       {List<dynamic>? params});
 

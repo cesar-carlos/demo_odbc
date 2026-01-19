@@ -9,7 +9,7 @@ class SchemaUtils {
 
   SchemaUtils(this.driver);
 
-  /// Verifica se uma tabela existe no banco de dados.
+  /// Checks if a table exists in the database.
   Future<Result<bool>> tableExists(String tableName) async {
     final sanitizedName = _sanitize(tableName);
     String query;
@@ -20,14 +20,13 @@ class SchemaUtils {
         break;
       case DatabaseType.sqlServer:
       case DatabaseType.postgresql:
-        // Padrão ANSI
         query = "SELECT 1 FROM information_schema.tables WHERE table_name = '$sanitizedName' AND table_type = 'BASE TABLE'";
         break;
     }
     return _checkExists(query);
   }
 
-  /// Verifica se uma view existe.
+  /// Checks if a view exists.
   Future<Result<bool>> viewExists(String viewName) async {
     final sanitizedName = _sanitize(viewName);
     String query;
@@ -44,7 +43,7 @@ class SchemaUtils {
     return _checkExists(query);
   }
 
-  /// Verifica se uma coluna existe em uma tabela.
+  /// Checks if a column exists in a table.
   Future<Result<bool>> columnExists(String tableName, String columnName) async {
     final t = _sanitize(tableName);
     final c = _sanitize(columnName);
@@ -67,7 +66,7 @@ class SchemaUtils {
     return _checkExists(query);
   }
 
-  /// Verifica se uma procedure ou function existe.
+  /// Checks if a procedure or function exists.
   Future<Result<bool>> procedureExists(String procName) async {
     final p = _sanitize(procName);
     String query;
@@ -84,14 +83,14 @@ class SchemaUtils {
     return _checkExists(query);
   }
 
-  /// Cria uma nova tabela se ela não existir (via verificação manual antes pode ser feito pelo caller).
-  /// [ddlBody] deve conter o corpo da definição, ex: "(Id INT, Nome VARCHAR(100))"
+  /// Creates a new table if it doesn't exist (manual verification can be done by the caller beforehand).
+  /// [ddlBody] should contain the definition body, e.g., "(Id INT, Nome VARCHAR(100))"
   Future<Result<Unit>> createTable(String tableName, String ddlBody) async {
     return (await driver.execute('CREATE TABLE $tableName $ddlBody')).map((_) => unit);
   }
 
-  /// Garante que uma coluna exista na tabela. Se não existir, executa ALTER TABLE ADD.
-  /// [ddlType] ex: "INT", "VARCHAR(100) NULL".
+  /// Ensures that a column exists in the table. If it doesn't exist, executes ALTER TABLE ADD.
+  /// [ddlType] e.g., "INT", "VARCHAR(100) NULL".
   Future<Result<Unit>> ensureColumn(String tableName, String columnName, String ddlType) async {
     final existsResult = await columnExists(tableName, columnName);
     
@@ -100,10 +99,8 @@ class SchemaUtils {
     }
     
     if (existsResult.getOrThrow()) {
-      return Success.unit(); // Já existe
+      return Success.unit();
     }
-
-    // Não existe, cria
     final query = 'ALTER TABLE $tableName ADD $columnName $ddlType';
     return (await driver.execute(query)).map((_) => unit);
   }

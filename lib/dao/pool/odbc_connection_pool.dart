@@ -50,7 +50,7 @@ class OdbcConnectionPool {
       final connectResult = await newDriver.connect();
       if (connectResult.isError()) {
         return Failure(connectResult.exceptionOrNull() ??
-            Exception('Falha ao criar conexão no pool'));
+            Exception('Failed to create connection in pool'));
       }
 
       _inUse.add(newDriver);

@@ -1,17 +1,17 @@
 import 'dart:core';
 
-/// Enum que representa os tipos de dados SQL suportados.
+/// Enum representing supported SQL data types.
 ///
-/// **Compatibilidade entre bancos:**
-/// - **SQL Server**: Suporta todos os tipos. `nvarchar` e `datetime2` são específicos do SQL Server.
-/// - **Sybase Anywhere**: Suporta tipos similares ao SQL Server. `nvarchar` e `nchar` são suportados.
+/// **Database compatibility:**
+/// - **SQL Server**: Supports all types. `nvarchar` and `datetime2` are SQL Server specific.
+/// - **Sybase Anywhere**: Supports types similar to SQL Server. `nvarchar` and `nchar` are supported.
 /// - **PostgreSQL**:
-///   - Não possui `nvarchar` ou `nchar` nativamente (usa `varchar`/`char` com encoding UTF-8).
-///   - Não possui `datetime2` (usa `timestamp` ou `timestamp with time zone`).
-///   - Não possui `image` (usa `bytea` para dados binários grandes).
-///   - `money` existe, mas recomendado usar `numeric` ou `decimal`.
+///   - Does not have `nvarchar` or `nchar` natively (uses `varchar`/`char` with UTF-8 encoding).
+///   - Does not have `datetime2` (uses `timestamp` or `timestamp with time zone`).
+///   - Does not have `image` (uses `bytea` for large binary data).
+///   - `money` exists, but recommended to use `numeric` or `decimal`.
 ///
-/// Nota: O mapeamento para `ColumnType` ODBC é universal e funciona com todos os bancos suportados.
+/// Note: The mapping to ODBC `ColumnType` is universal and works with all supported databases.
 enum SqlDataType {
   varchar,
   nvarchar,

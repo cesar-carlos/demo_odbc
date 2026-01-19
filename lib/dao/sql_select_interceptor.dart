@@ -167,7 +167,7 @@ class SqlSelectInterceptor {
 
       return result;
     } catch (e, stackTrace) {
-      return Failure(Exception('Erro ao interceptar SELECT: $e\nStack trace: $stackTrace'));
+      return Failure(Exception('Error intercepting SELECT: $e\nStack trace: $stackTrace'));
     }
   }
 
@@ -245,7 +245,7 @@ class SqlSelectInterceptor {
     if (cacheResult.isError()) {
       return Failure(
         cacheResult.exceptionOrNull() ??
-            Exception('Erro ao obter colunas da tabela $tableName'),
+            Exception('Error getting columns from table $tableName'),
       );
     }
 
@@ -313,7 +313,7 @@ class SqlSelectInterceptor {
     if (cacheResult.isError()) {
       return Failure(
         cacheResult.exceptionOrNull() ??
-            Exception('Erro ao obter colunas da tabela $tableName'),
+            Exception('Error getting columns from table $tableName'),
       );
     }
 

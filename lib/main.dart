@@ -25,20 +25,12 @@ Future<void> selectExemplo() async {
   final query = SqlCommand(config);
 
   final result = await query.connect().flatMap((_) async {
-    // Constrói query segura consultando metadados
-    // -----------------------------------------------------------------------
-    // Exemplo: Safe Select Builder + Coluna Manual
-    // -----------------------------------------------------------------------
     final metadata = TableMetadata(query.odbc);
     final safeBuilder = SafeSelectBuilder(metadata);
 
-    // 1. Obter colunas seguras (exclui image/varbinary automaticamente)
-    // Nota: safeCols não está sendo usado neste exemplo, mas pode ser útil para validação
     final safeColsResult = await safeBuilder.getSafeColumns('Cliente');
     if (safeColsResult.isError()) throw safeColsResult.exceptionOrNull()!;
 
-    // 2. Montar query manual adicionando uma coluna específica se necessário
-    // OBS: Se adicionar campo IMAGE/VARBINARY aqui, cuidado com o erro HY001!
     query.commandText = '''
       SELECT *
       FROM Produto
@@ -50,38 +42,22 @@ Future<void> selectExemplo() async {
   try {
     result.fold(
       (success) {
-        // Processa usando while (!query.eof)
-        int recordCount = 0;
-
         while (!query.eof) {
-          // Processa cada registro individualmente
-          // Exemplo de acesso aos dados:
-          // final codProduto = query.field('CodProduto').asInt;
-          // final nome = query.field('Nome').asString;
-          // final codTipoProduto = query.field('CodTipoProduto').asInt;
-          // final codUnidadeMedida = query.field('CodUnidadeMedida').asInt;
-
-          // Exibe progresso a cada 1000 registros
-          if (recordCount % 1000 == 0) {
-            debugPrint('Processados $recordCount registros...');
-          }
-
           query.next();
         }
 
-        debugPrint('Total de registros processados: $recordCount');
-        debugPrint('Total de registros na query: ${query.recordCount}');
+        debugPrint('Total records in query: ${query.recordCount}');
       },
       (failure) {
-        debugPrint('Erro no SELECT: $failure');
+        debugPrint('Error in SELECT: $failure');
         debugPrint('Stack trace: ${failure.toString()}');
       },
     );
   } catch (e, stackTrace) {
-    debugPrint('Erro fatal durante processamento: $e');
+    debugPrint('Fatal error during processing: $e');
     debugPrint('Stack trace: $stackTrace');
   } finally {
     await query.close();
-    debugPrint('Conexão fechada.');
+    debugPrint('Connection closed.');
   }
 }
