@@ -313,10 +313,15 @@ class SqlCommand {
     final columnsStr = columns.join(', ');
 
     int totalAffected = 0;
+    int batchCount = (rows.length / batchSize).ceil();
+
+    debugPrint('BulkInsert: Starting ${rows.length} records in $batchCount batches of $batchSize');
 
     for (var i = 0; i < rows.length; i += batchSize) {
       final end = (i + batchSize < rows.length) ? i + batchSize : rows.length;
       final batch = rows.sublist(i, end);
+
+      debugPrint('BulkInsert: Processing batch ${((i / batchSize) + 1).toInt()}/$batchCount (${batch.length} records)');
 
       final valuesBuffer = StringBuffer();
 
@@ -337,9 +342,15 @@ class SqlCommand {
           } else if (val is bool) {
             valuesBuffer.write(val ? '1' : '0');
           } else if (val is DateTime) {
-            valuesBuffer.write("'");
-            valuesBuffer.write(val.toIso8601String().replaceAll('T', ' '));
-            valuesBuffer.write("'");
+            // Format: YYYY-MM-DD HH:MM:SS.mmm (milliseconds only for SQL Server DATETIME)
+            final year = val.year.toString().padLeft(4, '0');
+            final month = val.month.toString().padLeft(2, '0');
+            final day = val.day.toString().padLeft(2, '0');
+            final hour = val.hour.toString().padLeft(2, '0');
+            final minute = val.minute.toString().padLeft(2, '0');
+            final second = val.second.toString().padLeft(2, '0');
+            final ms = val.millisecond.toString().padLeft(3, '0');
+            valuesBuffer.write("'$year-$month-$day $hour:$minute:$second.$ms'");
           } else {
             valuesBuffer.write("N'");
             valuesBuffer.write(val.toString().replaceAll("'", "''"));
@@ -351,16 +362,21 @@ class SqlCommand {
 
       final sql = 'INSERT INTO $tableName ($columnsStr) VALUES $valuesBuffer';
 
+      debugPrint('BulkInsert: SQL length ${sql.length} characters');
       final result = await odbc.execute(sql);
 
       if (result.isSuccess()) {
         totalAffected += batch.length;
+        debugPrint('BulkInsert: Batch succeeded, total affected: $totalAffected');
       } else {
-        return Failure(result.exceptionOrNull() ??
+        final error = result.exceptionOrNull();
+        debugPrint('BulkInsert error: $error');
+        return Failure(error ??
             Exception('Unknown error in Bulk Insert'));
       }
     }
 
+    debugPrint('BulkInsert: Completed, total affected: $totalAffected');
     return Success(totalAffected);
   }
 

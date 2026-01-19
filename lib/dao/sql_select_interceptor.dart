@@ -231,6 +231,29 @@ class SqlSelectInterceptor {
     return upperColumn.contains('CAST(') || upperColumn.contains('CONVERT(');
   }
 
+  bool _isAggregateFunction(String column) {
+    final upperColumn = column.toUpperCase().trim();
+    final aggregateFunctions = [
+      'COUNT(',
+      'SUM(',
+      'AVG(',
+      'MAX(',
+      'MIN(',
+      'STDEV(',
+      'STDEVP(',
+      'VAR(',
+      'VARP(',
+    ];
+    
+    for (final func in aggregateFunctions) {
+      if (upperColumn.startsWith(func)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
   Future<Result<String>> _applyCastToColumns(
     List<String> columns,
     String tableName,
@@ -260,6 +283,11 @@ class SqlSelectInterceptor {
       final cleanCol = columns[i].trim();
 
       if (_hasCast(cleanCol)) {
+        buffer.write(cleanCol);
+        continue;
+      }
+
+      if (_isAggregateFunction(cleanCol)) {
         buffer.write(cleanCol);
         continue;
       }

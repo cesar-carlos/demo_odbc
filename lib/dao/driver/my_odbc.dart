@@ -92,6 +92,11 @@ class MyOdbc implements DatabaseDriver {
   Future<Result<List<Map<String, dynamic>>>> execute(String query,
       {List<dynamic>? params}) async {
     try {
+      // If params is empty, don't pass it (bypasses parameter binding)
+      if (params != null && params.isEmpty) {
+        final result = await driver.execute(query);
+        return Success(result.toList());
+      }
       final result = await driver.execute(
         query,
         params: params,
@@ -111,7 +116,10 @@ class MyOdbc implements DatabaseDriver {
   Future<Result<Stream<Map<String, dynamic>>>> executeCursor(String query,
       {List<dynamic>? params}) async {
     try {
-      final cursor = await driver.executeCursor(query, params: params);
+      // If params is empty, don't pass it (bypasses parameter binding)
+      final cursor = params != null && params.isEmpty
+          ? await driver.executeCursor(query)
+          : await driver.executeCursor(query, params: params);
 
       final stream = () async* {
         try {
@@ -165,14 +173,14 @@ class MyOdbc implements DatabaseDriver {
       return Success.unit();
     } catch (err, stackTrace) {
       final errorMessage = err.toString().toLowerCase();
-      
+
       if (errorMessage.contains('already closed') ||
           errorMessage.contains('connection closed') ||
           errorMessage.contains('lost connection') ||
           errorMessage.contains('not connected')) {
         return Success.unit();
       }
-      
+
       return Failure(ConnectionError(
         'Falha ao desconectar do banco de dados',
         err,

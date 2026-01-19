@@ -23,6 +23,7 @@ Future<void> selectExemplo() async {
   );
 
   final query = SqlCommand(config);
+  var recordCount = 0;
 
   final result = await query.connect().flatMap((_) async {
     final metadata = TableMetadata(query.odbc);
@@ -33,7 +34,7 @@ Future<void> selectExemplo() async {
 
     query.commandText = '''
       SELECT *
-      FROM Cliente
+      FROM Produto
     ''';
 
     return await query.open();
@@ -43,9 +44,15 @@ Future<void> selectExemplo() async {
     result.fold(
       (success) {
         while (!query.eof) {
+          recordCount++;
+          //debugPrint('Record: ${query.field('CodProduto').asInt}');
+          //debugPrint('Record: ${query.field('Nome').asString}');
+          //debugPrint('Record: ${query.field('Email').asString}');
+          //debugPrint('Record: ${query.field('DataCadastro').asString}');
           query.next();
         }
 
+        debugPrint('Total records in recordCount: $recordCount');
         debugPrint('Total records in query: ${query.recordCount}');
       },
       (failure) {

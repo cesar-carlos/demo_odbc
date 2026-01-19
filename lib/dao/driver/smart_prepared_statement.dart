@@ -25,7 +25,6 @@ class SmartPreparedStatement {
 
   Result<PreparedData> execute(Map<String, dynamic> params) {
     final buffer = StringBuffer();
-    final values = <dynamic>[];
     int lastEnd = 0;
 
     for (var token in _tokens) {
@@ -36,14 +35,9 @@ class SmartPreparedStatement {
             Exception('Parâmetro obrigatório não fornecido: ${token.name}'));
       }
 
-      buffer.write('?');
-
+      // Interpolate value directly with proper escaping
       final val = params[token.name];
-      if (val is DateTime) {
-        values.add(val.toIso8601String().replaceAll('T', ' '));
-      } else {
-        values.add(val);
-      }
+      buffer.write(_escapeValue(val));
 
       lastEnd = token.end;
     }
@@ -52,7 +46,33 @@ class SmartPreparedStatement {
       buffer.write(_templateSql.substring(lastEnd));
     }
 
-    return Success(PreparedData(buffer.toString(), values));
+    // Return SQL with interpolated values and empty params list
+    return Success(PreparedData(buffer.toString(), []));
+  }
+
+  String _escapeValue(dynamic value) {
+    if (value == null) {
+      return 'NULL';
+    }
+    if (value is int || value is double) {
+      return value.toString();
+    }
+    if (value is bool) {
+      return value ? '1' : '0';
+    }
+    if (value is DateTime) {
+      // Format: YYYY-MM-DD HH:MM:SS.mmm (milliseconds only for SQL Server DATETIME)
+      final year = value.year.toString().padLeft(4, '0');
+      final month = value.month.toString().padLeft(2, '0');
+      final day = value.day.toString().padLeft(2, '0');
+      final hour = value.hour.toString().padLeft(2, '0');
+      final minute = value.minute.toString().padLeft(2, '0');
+      final second = value.second.toString().padLeft(2, '0');
+      final ms = value.millisecond.toString().padLeft(3, '0');
+      return "'$year-$month-$day $hour:$minute:$second.$ms'";
+    }
+    // For strings, escape single quotes by doubling them
+    return "'${value.toString().replaceAll("'", "''")}'";
   }
 }
 
