@@ -40,7 +40,7 @@ class MyOdbc implements DatabaseDriver {
       Trusted_connection = yes;
       MARS_Connection = yes;
       MultipleActiveResultSets = true;
-      Packet Size = 4096;
+      Packet Size = 16384;
       TrustServerCertificate = yes;
       Encrypt = false;
       Connection Timeout = 30;
@@ -116,15 +116,34 @@ class MyOdbc implements DatabaseDriver {
       final stream = () async* {
         try {
           while (true) {
-            final row = await cursor.next();
-            if (row is CursorDone) {
-              break;
-            }
+            try {
+              final row = await cursor.next();
+              if (row is CursorDone) {
+                break;
+              }
 
-            yield row as Map<String, dynamic>;
+              yield row as Map<String, dynamic>;
+            } catch (e) {
+              final errorMessage = e.toString().toLowerCase();
+              if (errorMessage.contains('cursor') &&
+                  (errorMessage.contains('not found') ||
+                      errorMessage.contains('closed'))) {
+                break;
+              }
+              rethrow;
+            }
           }
         } finally {
-          await cursor.close();
+          try {
+            await cursor.close();
+          } catch (e) {
+            final errorMessage = e.toString().toLowerCase();
+            if (!errorMessage.contains('cursor') ||
+                (!errorMessage.contains('not found') &&
+                    !errorMessage.contains('closed'))) {
+              rethrow;
+            }
+          }
         }
       }();
 
@@ -145,6 +164,15 @@ class MyOdbc implements DatabaseDriver {
       await driver.disconnect();
       return Success.unit();
     } catch (err, stackTrace) {
+      final errorMessage = err.toString().toLowerCase();
+      
+      if (errorMessage.contains('already closed') ||
+          errorMessage.contains('connection closed') ||
+          errorMessage.contains('lost connection') ||
+          errorMessage.contains('not connected')) {
+        return Success.unit();
+      }
+      
       return Failure(ConnectionError(
         'Falha ao desconectar do banco de dados',
         err,

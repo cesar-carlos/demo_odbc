@@ -1,10 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:result_dart/result_dart.dart';
 
 import 'package:demo_odbc/dao/table_metadata.dart';
+import 'package:demo_odbc/dao/config/database_type.dart';
 
 class _CacheConstants {
   static const Duration cacheExpiration = Duration(minutes: 8);
   static const int minQueryLength = 10;
+  static const int maxSqlLengthWarning = 10000;
+  static const int maxColumnsWarning = 500;
 }
 
 class _VarcharSizeConstants {
@@ -21,6 +25,8 @@ class _VarcharSizeConstants {
   static const String timeSize = '16';
   static const String maxSize = 'MAX';
   static const String defaultSize = '2000';
+  static const String maxSafeSize = '8000';
+  static const String maxSafeUnicodeSize = '4000';
 }
 
 class _SelectInfo {
@@ -28,12 +34,14 @@ class _SelectInfo {
   final List<String> columns;
   final String tableName;
   final String restOfQuery;
+  final String? topClause;
 
   _SelectInfo({
     required this.isSelectAll,
     required this.columns,
     required this.tableName,
     required this.restOfQuery,
+    this.topClause,
   });
 }
 
@@ -94,7 +102,8 @@ class _TypeInfo {
         lowerType == 'ntext';
     isBinary = lowerType == 'image' ||
         lowerType == 'varbinary' ||
-        lowerType == 'binary';
+        lowerType == 'binary' ||
+        lowerType == 'bytea';
     isString = lowerType == 'varchar' ||
         lowerType == 'char' ||
         lowerType == 'text';
@@ -136,20 +145,29 @@ class SqlSelectInterceptor {
         return Success(query);
       }
 
-      if (selectInfo.isSelectAll) {
-        return await _applyCastToAllColumns(
-          selectInfo.tableName,
-          selectInfo.restOfQuery,
-        );
-      } else {
-        return await _applyCastToColumns(
-          selectInfo.columns,
-          selectInfo.tableName,
-          selectInfo.restOfQuery,
-        );
+      final result = selectInfo.isSelectAll
+          ? await _applyCastToAllColumns(
+              selectInfo.tableName,
+              selectInfo.restOfQuery,
+              selectInfo.topClause,
+            )
+          : await _applyCastToColumns(
+              selectInfo.columns,
+              selectInfo.tableName,
+              selectInfo.restOfQuery,
+              selectInfo.topClause,
+            );
+
+      if (result.isSuccess()) {
+        final interceptedQuery = result.getOrThrow();
+        if (interceptedQuery.length > _CacheConstants.maxSqlLengthWarning) {
+          debugPrint('SqlSelectInterceptor: SQL gerado muito grande (${interceptedQuery.length} caracteres)');
+        }
       }
-    } catch (e) {
-      return Failure(Exception('Erro ao interceptar SELECT: $e'));
+
+      return result;
+    } catch (e, stackTrace) {
+      return Failure(Exception('Erro ao interceptar SELECT: $e\nStack trace: $stackTrace'));
     }
   }
 
@@ -160,11 +178,27 @@ class SqlSelectInterceptor {
     final upperQuery = trimmedQuery.toUpperCase();
     if (!upperQuery.startsWith('SELECT')) return null;
 
+    String? topClause;
+    String queryWithoutTop = trimmedQuery;
+
+    final topMatch = RegExp(
+      r'SELECT\s+(TOP\s+\d+)\s+',
+      caseSensitive: false,
+    ).firstMatch(trimmedQuery);
+
+    if (topMatch != null) {
+      topClause = topMatch.group(1);
+      queryWithoutTop = trimmedQuery.replaceFirst(
+        RegExp(r'SELECT\s+TOP\s+\d+\s+', caseSensitive: false),
+        'SELECT ',
+      );
+    }
+
     final selectMatch = RegExp(
       r'SELECT\s+(.+?)\s+FROM\s+(\w+(?:\.\w+)?)(?:\s+(?:WITH\s*\([^)]+\)))?(.*)',
       caseSensitive: false,
       dotAll: true,
-    ).firstMatch(trimmedQuery);
+    ).firstMatch(queryWithoutTop);
 
     if (selectMatch == null) return null;
 
@@ -188,6 +222,7 @@ class SqlSelectInterceptor {
       columns: columns,
       tableName: tableName,
       restOfQuery: restOfQuery,
+      topClause: topClause,
     );
   }
 
@@ -200,7 +235,12 @@ class SqlSelectInterceptor {
     List<String> columns,
     String tableName,
     String restOfQuery,
+    String? topClause,
   ) async {
+    if (columns.length > _CacheConstants.maxColumnsWarning) {
+      debugPrint('SqlSelectInterceptor: AVISO - Query com ${columns.length} colunas (pode ser lento)');
+    }
+
     final cacheResult = await _MetadataCache.getCached(metadata, tableName);
     if (cacheResult.isError()) {
       return Failure(
@@ -229,11 +269,13 @@ class SqlSelectInterceptor {
       if (colInfo != null) {
         buffer.write(_getCastExpression(colInfo));
       } else {
-        buffer.write('CAST($cleanCol AS VARCHAR(${_VarcharSizeConstants.maxSize})) AS $cleanCol');
+        buffer.write(_getFallbackCast(cleanCol));
       }
     }
 
-    return Success('SELECT ${buffer.toString()} FROM $tableName $restOfQuery');
+    final topPrefix = topClause != null ? '$topClause ' : '';
+    final finalQuery = 'SELECT $topPrefix${buffer.toString()} FROM $tableName $restOfQuery';
+    return Success(finalQuery);
   }
 
   String _extractColumnName(String column) {
@@ -265,6 +307,7 @@ class SqlSelectInterceptor {
   Future<Result<String>> _applyCastToAllColumns(
     String tableName,
     String restOfQuery,
+    String? topClause,
   ) async {
     final cacheResult = await _MetadataCache.getCached(metadata, tableName);
     if (cacheResult.isError()) {
@@ -278,7 +321,8 @@ class SqlSelectInterceptor {
     final columns = entry.columns;
 
     if (columns.isEmpty) {
-      return Success('SELECT * FROM $tableName $restOfQuery');
+      final topPrefix = topClause != null ? '$topClause ' : '';
+      return Success('SELECT $topPrefix* FROM $tableName $restOfQuery');
     }
 
     final buffer = StringBuffer();
@@ -287,21 +331,23 @@ class SqlSelectInterceptor {
       buffer.write(_getCastExpression(columns[i]));
     }
 
-    return Success('SELECT ${buffer.toString()} FROM $tableName $restOfQuery');
+    final topPrefix = topClause != null ? '$topClause ' : '';
+    return Success('SELECT $topPrefix${buffer.toString()} FROM $tableName $restOfQuery');
   }
 
   String _getCastExpression(Map<String, dynamic> col) {
     final name = col['name'] as String;
     final type = col['type'] as String;
     final typeInfo = _TypeCache.getTypeInfo(type);
+    final dbType = metadata.driver.type;
 
     if (typeInfo.isBinary) {
-      return 'CAST($name AS VARBINARY(${_VarcharSizeConstants.maxSize})) AS $name';
+      return _getBinaryCast(name, dbType);
     }
 
     if (typeInfo.isUnicode) {
       final size = _getVarcharSize(col);
-      return 'CAST($name AS NVARCHAR($size)) AS $name';
+      return _getUnicodeCast(name, size, dbType);
     }
 
     if (typeInfo.isString) {
@@ -311,6 +357,37 @@ class SqlSelectInterceptor {
 
     final size = _getVarcharSize(col);
     return 'CAST($name AS VARCHAR($size)) AS $name';
+  }
+
+  String _getBinaryCast(String name, DatabaseType dbType) {
+    switch (dbType) {
+      case DatabaseType.postgresql:
+        return 'CAST($name AS BYTEA) AS $name';
+      case DatabaseType.sqlServer:
+      case DatabaseType.sybaseAnywhere:
+        return 'CAST($name AS VARBINARY(${_VarcharSizeConstants.maxSize})) AS $name';
+    }
+  }
+
+  String _getUnicodeCast(String name, String size, DatabaseType dbType) {
+    switch (dbType) {
+      case DatabaseType.postgresql:
+        return 'CAST($name AS VARCHAR($size)) AS $name';
+      case DatabaseType.sqlServer:
+      case DatabaseType.sybaseAnywhere:
+        return 'CAST($name AS NVARCHAR($size)) AS $name';
+    }
+  }
+
+  String _getFallbackCast(String column) {
+    final dbType = metadata.driver.type;
+    switch (dbType) {
+      case DatabaseType.postgresql:
+        return 'CAST($column AS TEXT) AS $column';
+      case DatabaseType.sqlServer:
+      case DatabaseType.sybaseAnywhere:
+        return 'CAST($column AS VARCHAR(${_VarcharSizeConstants.maxSafeSize})) AS $column';
+    }
   }
 
   String _getVarcharSize(Map<String, dynamic> col) {

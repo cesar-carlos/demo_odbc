@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:result_dart/result_dart.dart';
 
 import 'package:demo_odbc/dao/driver/my_odbc.dart';
@@ -26,6 +27,7 @@ class SqlCommand {
   SqlTransaction? transaction;
 
   bool _useReadUncommitted = false;
+  bool _disableInterceptorForStream = false;
 
   SqlCommand(DatabaseConfig config)
       : odbc = MyOdbc(
@@ -138,6 +140,14 @@ class SqlCommand {
 
   void disableReadUncommitted() {
     _useReadUncommitted = false;
+  }
+
+  void disableInterceptorForStream() {
+    _disableInterceptorForStream = true;
+  }
+
+  void enableInterceptor() {
+    _disableInterceptorForStream = false;
   }
 
   String _addNoLock(String? query) {
@@ -256,17 +266,33 @@ class SqlCommand {
   }
 
   Future<Result<Unit>> close() async {
-    Result<Unit> result = Success.unit();
-    if (_isConnected) {
-      result = await odbc.disconnect();
+    try {
+      if (_isConnected) {
+        final disconnectResult = await odbc.disconnect();
+        if (disconnectResult.isError()) {
+          final error = disconnectResult.exceptionOrNull();
+          final errorMessage = error?.toString() ?? 'Erro desconhecido';
+          
+          if (errorMessage.contains('already closed') ||
+              errorMessage.contains('connection closed') ||
+              errorMessage.contains('Lost connection')) {
+            debugPrint('Aviso: Conexão já estava fechada. Continuando...');
+          } else {
+            debugPrint('Aviso ao desconectar: $errorMessage');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Aviso ao fechar conexão (pode já estar fechada): $e');
+    } finally {
+      _currentIndex = -1;
+      _currentRecord = {};
+      _isConnected = false;
+      _result.clear();
+      _params.clear();
     }
-    _currentIndex = -1;
-    _currentRecord = {};
-    _isConnected = false;
-    _result.clear();
-    _params.clear();
 
-    return result;
+    return Success.unit();
   }
 
   void clearParams() {

@@ -10,7 +10,19 @@ Biblioteca Flutter/Dart para acesso a bancos de dados via ODBC, fornecendo uma c
 - [Configuração](#configuração)
 - [Uso Básico](#uso-básico)
 - [Componentes Principais](#componentes-principais)
-- [Exemplos](#exemplos)
+- [Exemplos Completos](#exemplos-completos)
+  - [1. SELECT - Consultas](#1-select---consultas)
+  - [2. INSERT - Inserção de Dados](#2-insert---inserção-de-dados)
+  - [3. UPDATE - Atualização de Dados](#3-update---atualização-de-dados)
+  - [4. DELETE - Exclusão de Dados](#4-delete---exclusão-de-dados)
+  - [5. CREATE TABLE - Criação de Tabelas](#5-create-table---criação-de-tabelas)
+  - [6. ALTER TABLE - Alteração de Tabelas](#6-alter-table---alteração-de-tabelas)
+  - [7. Transações](#7-transações)
+  - [8. Verificações de Schema](#8-verificações-de-schema)
+  - [9. SELECT com Safe Builder](#9-select-com-safe-builder-manual)
+  - [10. Consulta de Metadados](#10-consulta-de-metadados)
+  - [11. Exemplos Avançados](#11-exemplos-avançados)
+  - [12. Operações DDL Adicionais](#12-operações-ddl-adicionais)
 - [Arquitetura](#arquitetura)
 - [Boas Práticas](#boas-práticas)
 - [Dependências](#dependências)
@@ -369,9 +381,13 @@ driverResult.fold(
 await pool.closeAll();
 ```
 
-## 💡 Exemplos
+## 💡 Exemplos Completos
 
-### Exemplo: SELECT com Interceptor Automático (Recomendado)
+### 1. SELECT - Consultas
+
+#### SELECT com Interceptor Automático (Recomendado)
+
+O interceptor funciona automaticamente, aplicando CAST inteligente em todos os SELECTs:
 
 O interceptor funciona automaticamente, aplicando CAST inteligente em todos os SELECTs:
 
@@ -462,68 +478,449 @@ result.fold(
 );
 ```
 
-### Exemplo Completo: SELECT com Safe Builder
+#### SELECT com TOP (Limitar Resultados)
 
 ```dart
-import 'package:demo_odbc/dao/sql_command.dart';
-import 'package:demo_odbc/dao/config/database_config.dart';
-import 'package:demo_odbc/dao/safe_select_builder.dart';
-import 'package:demo_odbc/dao/table_metadata.dart';
-import 'package:result_dart/result_dart.dart';
+final result = await query.connect().flatMap((_) async {
+  query.commandText = '''
+    SELECT TOP 100
+      CodProduto,
+      Nome,
+      DataCadastro
+    FROM Produto
+    ORDER BY CodProduto
+  ''';
+  
+  return await query.open();
+});
 
-Future<void> exemploSelect() async {
-  final config = DatabaseConfig.sqlServer(
-    driverName: 'SQL Server Native Client 11.0',
-    username: 'sa',
-    password: 'password',
-    database: 'NSE',
-    server: 'SERVER_NAME',
-    port: 1433,
-  );
-
-  final query = SqlCommand(config);
-
-  final result = await query.connect().flatMap((_) async {
-    // Usar Safe Select Builder
-    final metadata = TableMetadata(query.odbc);
-    final safeBuilder = SafeSelectBuilder(metadata);
-
-    final safeColsResult = await safeBuilder.getSafeColumns('Cliente');
-    if (safeColsResult.isError()) {
-      throw safeColsResult.exceptionOrNull()!;
+result.fold(
+  (success) {
+    while (!query.eof) {
+      print('Produto: ${query.field("Nome").asString}');
+      query.next();
     }
-    final safeCols = safeColsResult.getOrThrow();
+  },
+  (failure) => print('Erro: $failure'),
+);
+```
 
-    query.commandText = '''
-      SELECT $safeCols 
-      FROM Cliente WITH (NOLOCK)
-      WHERE CodCliente > :CodCliente
-    ''';
+#### SELECT com JOIN
 
-    query.param('CodCliente').asInt = 1;
+```dart
+final result = await query.connect().flatMap((_) async {
+  query.commandText = '''
+    SELECT 
+      c.CodCliente,
+      c.Nome,
+      p.CodProduto,
+      p.NomeProduto
+    FROM Cliente c
+    INNER JOIN Pedido ped ON c.CodCliente = ped.CodCliente
+    INNER JOIN Produto p ON ped.CodProduto = p.CodProduto
+    WHERE c.CodCliente = :id
+  ''';
+  
+  query.param('id').asInt = 1;
+  return await query.open();
+});
 
-    return await query.open();
-  });
+result.fold(
+  (success) {
+    while (!query.eof) {
+      print('Cliente: ${query.field("Nome").asString}');
+      print('Produto: ${query.field("NomeProduto").asString}');
+      query.next();
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
+```
 
+#### SELECT com Stream (Grandes Volumes)
+
+Para grandes volumes de dados, use `stream()` para processar linha a linha sem carregar tudo na memória:
+
+```dart
+import 'package:flutter/foundation.dart';
+
+final result = await query.connect().flatMap((_) async {
+  query.commandText = '''
+    SELECT 
+      CodProduto,
+      Nome,
+      CodTipoProduto,
+      CodUnidadeMedida,
+      DataCadastro
+    FROM Produto
+  ''';
+  
+  return await query.stream(); // Retorna Stream ao invés de carregar tudo
+});
+
+try {
   result.fold(
-    (success) {
-      while (!query.eof) {
-        print('ID: ${query.field("CodCliente").asInt}');
-        print('Nome: ${query.field("Nome").asString}');
-        query.next();
+    (stream) async {
+      int recordCount = 0;
+      
+      await for (final record in stream) {
+        recordCount++;
+        
+        // Processa cada registro individualmente
+        final codProduto = record['CodProduto']?.toString();
+        final nome = record['Nome']?.toString();
+        
+        // Exibe progresso a cada 1000 registros
+        if (recordCount % 1000 == 0) {
+          debugPrint('Processados $recordCount registros...');
+        }
       }
-      print('Total: ${query.recordCount}');
+      
+      debugPrint('Total de registros processados: $recordCount');
     },
     (failure) {
-      print('Erro: $failure');
+      debugPrint('Erro no SELECT: $failure');
     },
   );
-
+} catch (e, stackTrace) {
+  debugPrint('Erro fatal durante processamento: $e');
+  debugPrint('Stack trace: $stackTrace');
+} finally {
   await query.close();
+  debugPrint('Conexão fechada.');
 }
 ```
 
-### Exemplo: Transação
+**Vantagens do `stream()`:**
+- ✅ Não carrega todos os resultados na memória de uma vez
+- ✅ Processa linha por linha de forma assíncrona
+- ✅ Mais eficiente para grandes volumes de dados
+- ✅ Não precisa usar `query.next()` ou verificar `query.eof`
+
+### 2. INSERT - Inserção de Dados
+
+#### INSERT Simples
+
+```dart
+final result = await query.connect().flatMap((_) {
+  query.commandText = '''
+    INSERT INTO Cliente (Nome, Email, DataCadastro)
+    VALUES (:nome, :email, :data)
+  ''';
+  
+  query.param('nome').asString = 'João Silva';
+  query.param('email').asString = 'joao@email.com';
+  query.param('data').asDateTime = DateTime.now();
+  
+  return query.execute();
+});
+
+result.fold(
+  (success) => print('Cliente inserido com sucesso!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### INSERT com Retorno de ID (SQL Server)
+
+```dart
+final result = await query.connect().flatMap((_) async {
+  query.commandText = '''
+    INSERT INTO Cliente (Nome, Email, DataCadastro)
+    OUTPUT INSERTED.CodCliente
+    VALUES (:nome, :email, :data)
+  ''';
+  
+  query.param('nome').asString = 'Maria Santos';
+  query.param('email').asString = 'maria@email.com';
+  query.param('data').asDateTime = DateTime.now();
+  
+  return await query.open();
+});
+
+result.fold(
+  (success) {
+    if (!query.eof) {
+      final novoId = query.field('CodCliente').asInt;
+      print('Novo cliente criado com ID: $novoId');
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
+```
+
+#### Bulk Insert (Inserção em Lote)
+
+Para inserir múltiplos registros de uma vez:
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final registros = [
+  {'Nome': 'Cliente 1', 'Email': 'cliente1@email.com', 'Ativo': true},
+  {'Nome': 'Cliente 2', 'Email': 'cliente2@email.com', 'Ativo': true},
+  {'Nome': 'Cliente 3', 'Email': 'cliente3@email.com', 'Ativo': false},
+];
+
+final result = await query.bulkInsert('Cliente', registros, batchSize: 1000);
+
+result.fold(
+  (totalInseridos) => print('$totalInseridos registros inseridos com sucesso!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+### 3. UPDATE - Atualização de Dados
+
+#### UPDATE Simples
+
+```dart
+final result = await query.connect().flatMap((_) {
+  query.commandText = '''
+    UPDATE Cliente 
+    SET Nome = :nome,
+        Email = :email,
+        Observacao = :obs
+    WHERE CodCliente = :id
+  ''';
+  
+  query.param('id').asInt = 1;
+  query.param('nome').asString = 'João Silva Atualizado';
+  query.param('email').asString = 'joao.novo@email.com';
+  query.param('obs').asString = 'Cliente atualizado em ${DateTime.now()}';
+  
+  return query.execute();
+});
+
+result.fold(
+  (success) => print('Cliente atualizado com sucesso!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### UPDATE com Múltiplas Condições
+
+```dart
+final result = await query.connect().flatMap((_) {
+  query.commandText = '''
+    UPDATE Produto
+    SET PrecoVenda = :preco,
+        DataPrecoVenda = :data
+    WHERE CodProduto = :id
+      AND Ativo = 1
+      AND PrecoVenda <> :preco
+  ''';
+  
+  query.param('id').asInt = 100;
+  query.param('preco').asDouble = 99.99;
+  query.param('data').asDateTime = DateTime.now();
+  
+  return query.execute();
+});
+
+result.fold(
+  (success) => print('Preço atualizado!'),
+  (failure) => print('Erro: $failure'),
+);
+```
+
+### 4. DELETE - Exclusão de Dados
+
+#### DELETE Simples
+
+```dart
+final result = await query.connect().flatMap((_) {
+  query.commandText = '''
+    DELETE FROM Cliente
+    WHERE CodCliente = :id
+  ''';
+  
+  query.param('id').asInt = 1;
+  
+  return query.execute();
+});
+
+result.fold(
+  (success) => print('Cliente excluído com sucesso!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### DELETE com Condições Múltiplas
+
+```dart
+final result = await query.connect().flatMap((_) {
+  query.commandText = '''
+    DELETE FROM Log
+    WHERE Data < :dataLimite
+      AND Tipo = :tipo
+  ''';
+  
+  query.param('dataLimite').asDateTime = DateTime.now().subtract(Duration(days: 30));
+  query.param('tipo').asString = 'INFO';
+  
+  return query.execute();
+});
+
+result.fold(
+  (success) => print('Logs antigos excluídos!'),
+  (failure) => print('Erro: $failure'),
+);
+```
+
+### 5. CREATE TABLE - Criação de Tabelas
+
+#### Criar Tabela Simples
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final schema = SchemaUtils(query.odbc);
+
+final result = await schema.createTable(
+  'MinhaTabela',
+  '''
+  (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    Nome NVARCHAR(100) NOT NULL,
+    Email VARCHAR(200),
+    DataCadastro DATETIME DEFAULT GETDATE(),
+    Ativo BIT DEFAULT 1
+  )
+  ''',
+);
+
+result.fold(
+  (success) => print('Tabela criada com sucesso!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### Verificar e Criar Tabela (Se Não Existir)
+
+```dart
+final schema = SchemaUtils(query.odbc);
+
+final existeResult = await schema.tableExists('MinhaTabela');
+existeResult.fold(
+  (existe) async {
+    if (!existe) {
+      final createResult = await schema.createTable(
+        'MinhaTabela',
+        '(Id INT PRIMARY KEY, Nome VARCHAR(100))',
+      );
+      createResult.fold(
+        (success) => print('Tabela criada!'),
+        (failure) => print('Erro ao criar: $failure'),
+      );
+    } else {
+      print('Tabela já existe!');
+    }
+  },
+  (failure) => print('Erro ao verificar: $failure'),
+);
+```
+
+### 6. ALTER TABLE - Alteração de Tabelas
+
+#### Adicionar Coluna
+
+```dart
+final schema = SchemaUtils(query.odbc);
+
+final result = await schema.ensureColumn(
+  'Cliente',
+  'Telefone',
+  'VARCHAR(20) NULL',
+);
+
+result.fold(
+  (success) => print('Coluna adicionada (ou já existia)!'),
+  (failure) => print('Erro: $failure'),
+);
+```
+
+#### Adicionar Coluna com Verificação Manual
+
+```dart
+final schema = SchemaUtils(query.odbc);
+
+final existeResult = await schema.columnExists('Cliente', 'Telefone');
+existeResult.fold(
+  (existe) async {
+    if (!existe) {
+      final query = SqlCommand(config);
+      await query.connect();
+      
+      final alterResult = await query.odbc.execute(
+        'ALTER TABLE Cliente ADD Telefone VARCHAR(20) NULL',
+      );
+      
+      alterResult.fold(
+        (success) => print('Coluna adicionada!'),
+        (failure) => print('Erro: $failure'),
+      );
+      
+      await query.close();
+    } else {
+      print('Coluna já existe!');
+    }
+  },
+  (failure) => print('Erro ao verificar: $failure'),
+);
+```
+
+#### Modificar Tipo de Coluna
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final result = await query.odbc.execute(
+  'ALTER TABLE Cliente ALTER COLUMN Observacao NVARCHAR(MAX)',
+);
+
+result.fold(
+  (success) => print('Coluna modificada!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### Remover Coluna
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final result = await query.odbc.execute(
+  'ALTER TABLE Cliente DROP COLUMN Telefone',
+);
+
+result.fold(
+  (success) => print('Coluna removida!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+### 7. Transações
+
+#### Transação Simples
 
 ```dart
 Future<void> exemploTransacao() async {
@@ -570,43 +967,397 @@ Future<void> exemploTransacao() async {
 }
 ```
 
-### Exemplo: Paginação
+#### Transação com Auto-Commit
 
 ```dart
-Future<void> exemploPaginacao() async {
-  final config = DatabaseConfig.sqlServer(/* ... */);
-  final query = SqlCommand(config);
+final query = SqlCommand(config);
+await query.connect();
 
-  await query.connect().flatMap((_) async {
-    final metadata = TableMetadata(query.odbc);
-    final safeBuilder = SafeSelectBuilder(metadata);
+query.onAutoCommit();
 
-    final paginatedResult = await safeBuilder.buildPaginated(
-      'Cliente',
-      orderBy: 'CodCliente',
-      page: 1,
-      pageSize: 50,
-      withNoLock: true,
-    );
-
-    if (paginatedResult.isError()) {
-      throw paginatedResult.exceptionOrNull()!;
-    }
-
-    query.commandText = paginatedResult.getOrThrow();
-    return await query.open();
-  }).fold(
-    (success) {
-      while (!query.eof) {
-        print(query.field("Nome").asString);
-        query.next();
-      }
-    },
-    (failure) => print('Erro: $failure'),
-  );
-
+try {
+  query.commandText = 'UPDATE Cliente SET Nome = :nome WHERE CodCliente = :id';
+  query.param('id').asInt = 1;
+  query.param('nome').asString = 'Novo Nome';
+  await query.execute();
+  
+  query.commandText = 'INSERT INTO Log (Mensagem) VALUES (:msg)';
+  query.param('msg').asString = 'Cliente atualizado';
+  await query.execute();
+  
+  print('Operações concluídas com auto-commit!');
+} finally {
+  query.offAutoCommit();
   await query.close();
 }
+```
+
+### 8. Verificações de Schema
+
+#### Verificar se Tabela Existe
+
+```dart
+final schema = SchemaUtils(query.odbc);
+
+final result = await schema.tableExists('Cliente');
+result.fold(
+  (existe) {
+    if (existe) {
+      print('Tabela Cliente existe!');
+    } else {
+      print('Tabela Cliente não existe!');
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
+```
+
+#### Verificar se Coluna Existe
+
+```dart
+final schema = SchemaUtils(query.odbc);
+
+final result = await schema.columnExists('Cliente', 'Email');
+result.fold(
+  (existe) {
+    if (existe) {
+      print('Coluna Email existe!');
+    } else {
+      print('Coluna Email não existe!');
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
+```
+
+#### Verificar se View Existe
+
+```dart
+final schema = SchemaUtils(query.odbc);
+
+final result = await schema.viewExists('VwClientesAtivos');
+result.fold(
+  (existe) => print(existe ? 'View existe!' : 'View não existe!'),
+  (failure) => print('Erro: $failure'),
+);
+```
+
+#### Verificar se Procedure Existe
+
+```dart
+final schema = SchemaUtils(query.odbc);
+
+final result = await schema.procedureExists('sp_ObterCliente');
+result.fold(
+  (existe) => print(existe ? 'Procedure existe!' : 'Procedure não existe!'),
+  (failure) => print('Erro: $failure'),
+);
+```
+
+### 9. SELECT com Safe Builder (Manual)
+
+Útil quando você precisa construir queries manualmente:
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final metadata = TableMetadata(query.odbc);
+final safeBuilder = SafeSelectBuilder(metadata);
+
+final safeColsResult = await safeBuilder.getSafeColumns('Cliente');
+if (safeColsResult.isError()) {
+  throw safeColsResult.exceptionOrNull()!;
+}
+final safeCols = safeColsResult.getOrThrow();
+
+query.commandText = '''
+  SELECT $safeCols 
+  FROM Cliente WITH (NOLOCK)
+  WHERE CodCliente > :CodCliente
+''';
+
+query.param('CodCliente').asInt = 1;
+
+final result = await query.open();
+result.fold(
+  (success) {
+    while (!query.eof) {
+      print('ID: ${query.field("CodCliente").asInt}');
+      print('Nome: ${query.field("Nome").asString}');
+      query.next();
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### SELECT com Paginação (Safe Builder)
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final metadata = TableMetadata(query.odbc);
+final safeBuilder = SafeSelectBuilder(metadata);
+
+final paginatedResult = await safeBuilder.buildPaginated(
+  'Cliente',
+  orderBy: 'CodCliente',
+  page: 1,
+  pageSize: 50,
+  withNoLock: true,
+);
+
+if (paginatedResult.isError()) {
+  throw paginatedResult.exceptionOrNull()!;
+}
+
+query.commandText = paginatedResult.getOrThrow();
+final result = await query.open();
+
+result.fold(
+  (success) {
+    while (!query.eof) {
+      print(query.field("Nome").asString);
+      query.next();
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+### 10. Consulta de Metadados
+
+#### Obter Todas as Colunas de uma Tabela
+
+```dart
+final metadata = TableMetadata(query.odbc);
+
+final result = await metadata.getColumns('Cliente');
+result.fold(
+  (columns) {
+    for (final column in columns) {
+      print('Coluna: ${column['name']}');
+      print('Tipo: ${column['type']}');
+      print('Tamanho: ${column['length']}');
+      print('---');
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
+```
+
+### 11. Exemplos Avançados
+
+#### SELECT com Subquery
+
+```dart
+final result = await query.connect().flatMap((_) async {
+  query.commandText = '''
+    SELECT 
+      c.CodCliente,
+      c.Nome,
+      (SELECT COUNT(*) FROM Pedido WHERE CodCliente = c.CodCliente) AS TotalPedidos
+    FROM Cliente c
+    WHERE c.Ativo = 1
+  ''';
+  
+  return await query.open();
+});
+
+result.fold(
+  (success) {
+    while (!query.eof) {
+      print('Cliente: ${query.field("Nome").asString}');
+      print('Pedidos: ${query.field("TotalPedidos").asInt}');
+      query.next();
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
+```
+
+#### SELECT com GROUP BY e HAVING
+
+```dart
+final result = await query.connect().flatMap((_) async {
+  query.commandText = '''
+    SELECT 
+      CodCliente,
+      COUNT(*) AS TotalPedidos,
+      SUM(Valor) AS ValorTotal
+    FROM Pedido
+    GROUP BY CodCliente
+    HAVING COUNT(*) > :minPedidos
+  ''';
+  
+  query.param('minPedidos').asInt = 5;
+  return await query.open();
+});
+
+result.fold(
+  (success) {
+    while (!query.eof) {
+      print('Cliente: ${query.field("CodCliente").asInt}');
+      print('Pedidos: ${query.field("TotalPedidos").asInt}');
+      print('Total: ${query.field("ValorTotal").asDouble}');
+      query.next();
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
+```
+
+#### SELECT com ORDER BY e CASE
+
+```dart
+final result = await query.connect().flatMap((_) async {
+  query.commandText = '''
+    SELECT 
+      CodProduto,
+      Nome,
+      CASE 
+        WHEN PrecoVenda < 50 THEN 'Barato'
+        WHEN PrecoVenda < 200 THEN 'Médio'
+        ELSE 'Caro'
+      END AS Categoria
+    FROM Produto
+    ORDER BY PrecoVenda DESC
+  ''';
+  
+  return await query.open();
+});
+
+result.fold(
+  (success) {
+    while (!query.eof) {
+      print('${query.field("Nome").asString}: ${query.field("Categoria").asString}');
+      query.next();
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
+```
+
+### 12. Operações DDL Adicionais
+
+#### DROP TABLE (Remover Tabela)
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final result = await query.odbc.execute('DROP TABLE MinhaTabela');
+
+result.fold(
+  (success) => print('Tabela removida com sucesso!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### CREATE INDEX (Criar Índice)
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final result = await query.odbc.execute(
+  'CREATE INDEX IX_Cliente_Nome ON Cliente(Nome)',
+);
+
+result.fold(
+  (success) => print('Índice criado com sucesso!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### CREATE VIEW (Criar View)
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final result = await query.odbc.execute('''
+  CREATE VIEW VwClientesAtivos AS
+  SELECT CodCliente, Nome, Email
+  FROM Cliente
+  WHERE Ativo = 1
+''');
+
+result.fold(
+  (success) => print('View criada com sucesso!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### DROP VIEW (Remover View)
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final result = await query.odbc.execute('DROP VIEW VwClientesAtivos');
+
+result.fold(
+  (success) => print('View removida com sucesso!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### CREATE PROCEDURE (Criar Stored Procedure)
+
+```dart
+final query = SqlCommand(config);
+await query.connect();
+
+final result = await query.odbc.execute('''
+  CREATE PROCEDURE sp_ObterCliente
+    @CodCliente INT
+  AS
+  BEGIN
+    SELECT * FROM Cliente WHERE CodCliente = @CodCliente
+  END
+''');
+
+result.fold(
+  (success) => print('Procedure criada com sucesso!'),
+  (failure) => print('Erro: $failure'),
+);
+
+await query.close();
+```
+
+#### Executar Stored Procedure
+
+```dart
+final result = await query.connect().flatMap((_) async {
+  query.commandText = 'EXEC sp_ObterCliente @CodCliente = :id';
+  query.param('id').asInt = 1;
+  return await query.open();
+});
+
+result.fold(
+  (success) {
+    while (!query.eof) {
+      print('Cliente: ${query.field("Nome").asString}');
+      query.next();
+    }
+  },
+  (failure) => print('Erro: $failure'),
+);
 ```
 
 ## 🏗️ Arquitetura
