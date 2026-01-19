@@ -33,7 +33,7 @@ Future<void> selectExemplo() async {
 
     query.commandText = '''
       SELECT *
-      FROM Produto
+      FROM Cliente
     ''';
 
     return await query.open();
