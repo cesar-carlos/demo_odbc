@@ -26,7 +26,6 @@ class _VarcharSizeConstants {
   static const String maxSize = 'MAX';
   static const String defaultSize = '2000';
   static const String maxSafeSize = '8000';
-  static const String maxSafeUnicodeSize = '4000';
 }
 
 class _SelectInfo {
@@ -55,7 +54,8 @@ class _CacheEntry {
         timestamp = DateTime.now();
 
   bool get isValid {
-    return DateTime.now().difference(timestamp) < _CacheConstants.cacheExpiration;
+    return DateTime.now().difference(timestamp) <
+        _CacheConstants.cacheExpiration;
   }
 }
 
@@ -97,16 +97,14 @@ class _TypeInfo {
   late final bool isString;
 
   _TypeInfo(this.lowerType) {
-    isUnicode = lowerType == 'nvarchar' ||
-        lowerType == 'nchar' ||
-        lowerType == 'ntext';
+    isUnicode =
+        lowerType == 'nvarchar' || lowerType == 'nchar' || lowerType == 'ntext';
     isBinary = lowerType == 'image' ||
         lowerType == 'varbinary' ||
         lowerType == 'binary' ||
         lowerType == 'bytea';
-    isString = lowerType == 'varchar' ||
-        lowerType == 'char' ||
-        lowerType == 'text';
+    isString =
+        lowerType == 'varchar' || lowerType == 'char' || lowerType == 'text';
   }
 }
 
@@ -161,13 +159,15 @@ class SqlSelectInterceptor {
       if (result.isSuccess()) {
         final interceptedQuery = result.getOrThrow();
         if (interceptedQuery.length > _CacheConstants.maxSqlLengthWarning) {
-          debugPrint('SqlSelectInterceptor: SQL gerado muito grande (${interceptedQuery.length} caracteres)');
+          debugPrint(
+              'SqlSelectInterceptor: SQL gerado muito grande (${interceptedQuery.length} caracteres)');
         }
       }
 
       return result;
     } catch (e, stackTrace) {
-      return Failure(Exception('Error intercepting SELECT: $e\nStack trace: $stackTrace'));
+      return Failure(
+          Exception('Error intercepting SELECT: $e\nStack trace: $stackTrace'));
     }
   }
 
@@ -238,7 +238,8 @@ class SqlSelectInterceptor {
     String? topClause,
   ) async {
     if (columns.length > _CacheConstants.maxColumnsWarning) {
-      debugPrint('SqlSelectInterceptor: AVISO - Query com ${columns.length} colunas (pode ser lento)');
+      debugPrint(
+          'SqlSelectInterceptor: AVISO - Query com ${columns.length} colunas (pode ser lento)');
     }
 
     final cacheResult = await _MetadataCache.getCached(metadata, tableName);
@@ -274,7 +275,8 @@ class SqlSelectInterceptor {
     }
 
     final topPrefix = topClause != null ? '$topClause ' : '';
-    final finalQuery = 'SELECT $topPrefix${buffer.toString()} FROM $tableName $restOfQuery';
+    final finalQuery =
+        'SELECT $topPrefix${buffer.toString()} FROM $tableName $restOfQuery';
     return Success(finalQuery);
   }
 
@@ -332,7 +334,8 @@ class SqlSelectInterceptor {
     }
 
     final topPrefix = topClause != null ? '$topClause ' : '';
-    return Success('SELECT $topPrefix${buffer.toString()} FROM $tableName $restOfQuery');
+    return Success(
+        'SELECT $topPrefix${buffer.toString()} FROM $tableName $restOfQuery');
   }
 
   String _getCastExpression(Map<String, dynamic> col) {

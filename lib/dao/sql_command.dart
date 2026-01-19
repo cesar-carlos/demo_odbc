@@ -97,12 +97,14 @@ class SqlCommand {
       }
 
       if (SqlValidCommand.isSelectQuery(query)) {
-        final interceptedResult =
-            await _selectInterceptor.interceptSelect(query);
-        if (interceptedResult.isError()) {
-          return Failure(interceptedResult.exceptionOrNull()!);
+        if (!_disableInterceptorForStream) {
+          final interceptedResult =
+              await _selectInterceptor.interceptSelect(query);
+          if (interceptedResult.isError()) {
+            return Failure(interceptedResult.exceptionOrNull()!);
+          }
+          query = interceptedResult.getOrThrow();
         }
-        query = interceptedResult.getOrThrow();
       }
 
       final preparedResult = _substituteParameters(query);
