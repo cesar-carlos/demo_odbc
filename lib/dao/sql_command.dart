@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:result_dart/result_dart.dart';
 
 import 'package:demo_odbc/dao/driver/my_odbc.dart';
@@ -209,6 +208,9 @@ class SqlCommand {
 
   int get recordCount => _result.length;
 
+  /// Result rows after [open()]. Use for UI binding (e.g. ListView).
+  List<Map<String, dynamic>> get rows => List.unmodifiable(_result);
+
   void next() {
     if (_result.isEmpty) return;
 
@@ -242,21 +244,11 @@ class SqlCommand {
       if (_isConnected) {
         final disconnectResult = await odbc.disconnect();
         if (disconnectResult.isError()) {
-          final error = disconnectResult.exceptionOrNull();
-          final errorMessage = error?.toString() ?? 'Unknown error';
-
-          if (errorMessage.contains('already closed') ||
-              errorMessage.contains('connection closed') ||
-              errorMessage.contains('Lost connection')) {
-            debugPrint('Warning: Connection was already closed. Continuing...');
-          } else {
-            debugPrint('Warning while disconnecting: $errorMessage');
-          }
+          // Connection already closed or disconnect warning - continue
         }
       }
-    } catch (e) {
-      debugPrint(
-          'Warning while closing connection (may already be closed): $e');
+    } catch (_) {
+      // Connection may already be closed
     } finally {
       _currentIndex = -1;
       _currentRecord = {};
@@ -281,17 +273,10 @@ class SqlCommand {
     final columnsStr = columns.join(', ');
 
     int totalAffected = 0;
-    int batchCount = (rows.length / batchSize).ceil();
-
-    debugPrint(
-        'BulkInsert: Starting ${rows.length} records in $batchCount batches of $batchSize');
 
     for (var i = 0; i < rows.length; i += batchSize) {
       final end = (i + batchSize < rows.length) ? i + batchSize : rows.length;
       final batch = rows.sublist(i, end);
-
-      debugPrint(
-          'BulkInsert: Processing batch ${((i / batchSize) + 1).toInt()}/$batchCount (${batch.length} records)');
 
       final valuesBuffer = StringBuffer();
 
@@ -332,21 +317,16 @@ class SqlCommand {
 
       final sql = 'INSERT INTO $tableName ($columnsStr) VALUES $valuesBuffer';
 
-      debugPrint('BulkInsert: SQL length ${sql.length} characters');
       final result = await odbc.execute(sql);
 
       if (result.isSuccess()) {
         totalAffected += batch.length;
-        debugPrint(
-            'BulkInsert: Batch succeeded, total affected: $totalAffected');
       } else {
         final error = result.exceptionOrNull();
-        debugPrint('BulkInsert error: $error');
         return Failure(error ?? Exception('Unknown error in Bulk Insert'));
       }
     }
 
-    debugPrint('BulkInsert: Completed, total affected: $totalAffected');
     return Success(totalAffected);
   }
 
