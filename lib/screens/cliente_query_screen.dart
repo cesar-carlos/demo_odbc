@@ -1,8 +1,104 @@
+import 'dart:isolate';
+
 import 'package:flutter/material.dart';
 import 'package:result_dart/result_dart.dart';
 
 import 'package:demo_odbc/dao/config/database_config.dart';
 import 'package:demo_odbc/dao/sql_command.dart';
+
+/// Converte qualquer valor para tipo enviável entre isolates (evita _AsyncCompleter etc).
+Object? _toSendable(Object? v) {
+  if (v == null) return null;
+  if (v is bool || v is int || v is double || v is String) return v;
+  if (v is DateTime) return v.toIso8601String();
+  if (v is num) return v is int ? v : v.toDouble();
+  if (v is Duration) return v.inMilliseconds;
+  if (v is List) return v.map(_toSendable).toList();
+  if (v is Map) {
+    return v.map((k, val) => MapEntry(k.toString(), _toSendable(val)));
+  }
+  return v.toString();
+}
+
+/// Executa conexão + consulta (só chamar de dentro do isolate).
+Future<Map<String, Object?>> _runQueryInIsolateImpl(
+    Map<String, Object?> payload) async {
+  SqlCommand? command;
+  try {
+    final config = DatabaseConfig.sqlServer(
+      driverName: payload['driverName']! as String,
+      server: payload['server']! as String,
+      port: payload['port']! as int,
+      database: payload['database']! as String,
+      username: payload['username']! as String,
+      password: payload['password']! as String,
+      maxResultBufferBytes: payload['maxResultBufferBytes'] as int?,
+    );
+    command = SqlCommand(config);
+    command.commandText = payload['sql']! as String;
+    command.enableReadUncommitted();
+
+    const timeoutSeconds = 90;
+    final swConnect = Stopwatch()..start();
+    final connectResult = await command.connect().timeout(
+          const Duration(seconds: timeoutSeconds),
+          onTimeout: () =>
+              Failure(Exception('Timeout de conexão ($timeoutSeconds s)')),
+        );
+    final connectionTimeMs = swConnect.elapsedMilliseconds;
+    if (connectResult.isError()) {
+      await command.close();
+      return {'ok': false, 'error': connectResult.exceptionOrNull().toString()};
+    }
+
+    final swQuery = Stopwatch()..start();
+    final openResult = await command.open().timeout(
+          const Duration(seconds: timeoutSeconds),
+          onTimeout: () =>
+              Failure(Exception('Timeout na consulta ($timeoutSeconds s)')),
+        );
+    final queryTimeMs = swQuery.elapsedMilliseconds;
+    if (openResult.isError()) {
+      await command.close();
+      return {'ok': false, 'error': openResult.exceptionOrNull().toString()};
+    }
+
+    final columnNames = command.rows.isNotEmpty
+        ? command.rows.first.keys
+            .map((k) => k.toString())
+            .where((k) => k.isNotEmpty)
+            .toList()
+        : <String>[];
+    final rowsSendable = command.rows.map((r) {
+      return <String, Object?>{
+        for (final e in r.entries) e.key: _toSendable(e.value),
+      };
+    }).toList();
+
+    await command.close();
+    return <String, Object?>{
+      'ok': true,
+      'rows': rowsSendable,
+      'columnNames': columnNames,
+      'connectionTimeMs': connectionTimeMs,
+      'queryTimeMs': queryTimeMs,
+    };
+  } catch (e, _) {
+    await command?.close();
+    return {'ok': false, 'error': e.toString()};
+  }
+}
+
+/// Ponto de entrada do isolate: recebe [SendPort, payload], executa a query e envia resultado via SendPort.
+void _isolateEntry(List<dynamic> args) {
+  final sendPort = args[0] as SendPort;
+  final payload = args[1] as Map<String, Object?>;
+  _runQueryInIsolateImpl(payload).then((result) {
+    sendPort.send(result);
+  }).catchError((e, _) {
+    sendPort.send(<String, Object?>{'ok': false, 'error': e.toString()});
+  });
+}
 
 /// Tela com formulário de conexão, editor de consulta (SELECT) e grid dinâmica
 /// com o resultado e métricas.
@@ -90,8 +186,6 @@ class _ClienteQueryScreenState extends State<ClienteQueryScreen> {
     );
   }
 
-  static const _timeoutSeconds = 90;
-
   void _runQuery() {
     final sql = _queryController.text.trim();
     if (sql.isEmpty) {
@@ -123,64 +217,52 @@ class _ClienteQueryScreenState extends State<ClienteQueryScreen> {
   }
 
   Future<void> _executeQuery(String sql) async {
-    SqlCommand? command;
+    final config = _buildConfig();
+    final payload = <String, Object?>{
+      'driverName': config.driverName,
+      'server': config.server,
+      'port': config.port,
+      'database': config.database,
+      'username': config.username,
+      'password': config.password,
+      'maxResultBufferBytes': config.maxResultBufferBytes,
+      'sql': sql,
+    };
+
+    final receivePort = ReceivePort();
+    Isolate? isolate;
+
     try {
-      final config = _buildConfig();
-      command = SqlCommand(config);
-      command.commandText = sql;
-      // Evita bloqueio na tabela: consulta roda com READ UNCOMMITTED (não adquire locks).
-      command.enableReadUncommitted();
-
-      final stopwatchConnect = Stopwatch()..start();
-      final connectResult = await command.connect().timeout(
-          const Duration(seconds: _timeoutSeconds),
-          onTimeout: () => Failure(Exception(
-              'Timeout de conexão (${_timeoutSeconds}s). Verifique servidor, rede e firewall.')));
-      final connectionTimeMs = stopwatchConnect.elapsedMilliseconds;
-
-      if (connectResult.isError()) {
-        _setError(_userMessage(connectResult.exceptionOrNull()), command);
-        return;
-      }
-
-      final stopwatchQuery = Stopwatch()..start();
-      final openResult = await command.open().timeout(
-          const Duration(seconds: _timeoutSeconds),
-          onTimeout: () => Failure(Exception(
-              'Timeout na consulta (${_timeoutSeconds}s). Reduza o resultado (ex: TOP 100) ou verifique a rede.')));
-      final queryTimeMs = stopwatchQuery.elapsedMilliseconds;
-
-      openResult.fold(
-        (_) {
-          List<String> columnNames = [];
-          if (command!.rows.isNotEmpty) {
-            columnNames = command.rows.first.keys
-                .map((k) => k.toString())
-                .where((k) => k.isNotEmpty)
-                .toList();
-          }
-          if (mounted) {
-            final oldCommand = _command;
-            setState(() {
-              _command = command;
-              _rows = command!.rows;
-              _columnNames = columnNames;
-              _connectionTimeMs = connectionTimeMs;
-              _queryTimeMs = queryTimeMs;
-              _loading = false;
-              _pageIndex = 0;
-            });
-            oldCommand?.close();
-          }
-        },
-        (failure) async {
-          _setError(_userMessage(failure), command);
-          await command?.close();
-        },
+      isolate = await Isolate.spawn(
+        _isolateEntry,
+        [receivePort.sendPort, payload],
       );
+
+      final result = await receivePort.first as Map<String, Object?>;
+      receivePort.close();
+      isolate.kill(priority: Isolate.immediate);
+
+      if (!mounted) return;
+      if (result['ok'] == true) {
+        setState(() {
+          _command = null;
+          _rows = List<Map<String, dynamic>>.from(
+            (result['rows'] as List)
+                .map((e) => Map<String, dynamic>.from(e as Map)),
+          );
+          _columnNames = List<String>.from(result['columnNames'] as List);
+          _connectionTimeMs = result['connectionTimeMs'] as int;
+          _queryTimeMs = result['queryTimeMs'] as int;
+          _loading = false;
+          _pageIndex = 0;
+        });
+      } else {
+        _setError(result['error'] as String? ?? 'Erro desconhecido', null);
+      }
     } catch (e, _) {
-      _setError(_userMessage(e), command);
-      await command?.close();
+      receivePort.close();
+      isolate?.kill(priority: Isolate.immediate);
+      if (mounted) _setError(_userMessage(e), null);
     }
   }
 
@@ -370,6 +452,13 @@ class _ClienteQueryScreenState extends State<ClienteQueryScreen> {
               onPressed: _loading ? null : _runQuery,
               icon: const Icon(Icons.play_arrow),
               label: const Text('Executar'),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'A consulta roda em um isolate separado (não trava a tela).',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
           ],
         ),

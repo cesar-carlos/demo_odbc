@@ -24,7 +24,7 @@ void main() {
       enableMetrics: true,
     );
 
-    perfTableName = 'TestPerf_${DateTime.now().millisecondsSinceEpoch}';
+    perfTableName = 'Performance';
 
     final connectResult = await command.connect();
     if (connectResult.isError()) {

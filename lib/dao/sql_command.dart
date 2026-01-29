@@ -1,6 +1,8 @@
+import 'package:odbc_fast/odbc_fast.dart' as odbc_fast;
 import 'package:result_dart/result_dart.dart';
 
 import 'package:demo_odbc/dao/driver/my_odbc.dart';
+import 'package:demo_odbc/dao/driver/pooled_odbc_driver.dart';
 import 'package:demo_odbc/dao/driver/database_driver.dart';
 import 'package:demo_odbc/dao/config/database_type.dart';
 import 'package:demo_odbc/dao/config/database_config.dart';
@@ -14,6 +16,10 @@ class SqlCommand {
   final DatabaseDriver odbc;
   late final SchemaUtils schema;
   String? commandText;
+
+  /// Quando true, [bulkInsert] tenta o protocolo binário (odbc_fast) antes do SQL em lotes.
+  /// Em alguns ambientes o SQL em lotes é mais rápido; use true para testar o nativo.
+  static bool useNativeBulkInsert = false;
   final List<SqlTypeCommand> _params = [];
   List<Map<String, dynamic>> _result = [];
   Map<String, dynamic> _currentRecord = {};
@@ -278,8 +284,36 @@ class SqlCommand {
     if (rows.isEmpty) return const Success(0);
 
     final columns = rows.first.keys.toList();
-    final columnsStr = columns.join(', ');
 
+    var useNativePath = false;
+    if (SqlCommand.useNativeBulkInsert &&
+        (odbc is MyOdbc || odbc is PooledOdbcDriver)) {
+      final specResult = _inferBulkSpecs(columns, rows);
+      if (specResult.isError()) return Failure(specResult.exceptionOrNull()!);
+      final specs = specResult.getOrThrow();
+      int totalAffected = 0;
+      useNativePath = true;
+      for (var i = 0; i < rows.length && useNativePath; i += batchSize) {
+        final end = (i + batchSize < rows.length) ? i + batchSize : rows.length;
+        final batch = rows.sublist(i, end);
+        final rowValues = _rowsToBulkValues(columns, batch, specs);
+        final result = odbc is MyOdbc
+            ? await (odbc as MyOdbc)
+                .bulkInsertNative(tableName, specs, rowValues)
+            : await (odbc as PooledOdbcDriver)
+                .bulkInsertNative(tableName, specs, rowValues);
+        if (result.isError()) {
+          useNativePath = false;
+        } else {
+          totalAffected += result.getOrThrow();
+        }
+      }
+      if (useNativePath && totalAffected == rows.length) {
+        return Success(totalAffected);
+      }
+    }
+
+    final columnsStr = columns.join(', ');
     int totalAffected = 0;
 
     for (var i = 0; i < rows.length; i += batchSize) {
@@ -305,7 +339,6 @@ class SqlCommand {
           } else if (val is bool) {
             valuesBuffer.write(val ? '1' : '0');
           } else if (val is DateTime) {
-            // Format: YYYY-MM-DD HH:MM:SS.mmm (milliseconds only for SQL Server DATETIME)
             final year = val.year.toString().padLeft(4, '0');
             final month = val.month.toString().padLeft(2, '0');
             final day = val.day.toString().padLeft(2, '0');
@@ -336,6 +369,67 @@ class SqlCommand {
     }
 
     return Success(totalAffected);
+  }
+
+  Result<List<odbc_fast.BulkColumnSpec>> _inferBulkSpecs(
+      List<String> columns, List<Map<String, dynamic>> rows) {
+    try {
+      final specs = <odbc_fast.BulkColumnSpec>[];
+      for (final col in columns) {
+        final val = rows.first[col];
+        odbc_fast.BulkColumnType colType;
+        int maxLen = 0;
+        if (val == null) {
+          colType = odbc_fast.BulkColumnType.text;
+          maxLen = 1;
+        } else if (val is int) {
+          colType = odbc_fast.BulkColumnType.i32;
+        } else if (val is bool) {
+          colType = odbc_fast.BulkColumnType.i32;
+        } else if (val is String) {
+          colType = odbc_fast.BulkColumnType.text;
+          maxLen = rows
+              .map((r) => (r[col] as String?)?.length ?? 0)
+              .fold(0, (a, b) => a > b ? a : b)
+              .clamp(1, 4096);
+        } else if (val is DateTime) {
+          colType = odbc_fast.BulkColumnType.timestamp;
+        } else {
+          colType = odbc_fast.BulkColumnType.text;
+          maxLen = 256;
+        }
+        specs.add(odbc_fast.BulkColumnSpec(
+          name: col,
+          colType: colType,
+          nullable: true,
+          maxLen: maxLen,
+        ));
+      }
+      return Success(specs);
+    } catch (e) {
+      return Failure(e is Exception ? e : Exception(e.toString()));
+    }
+  }
+
+  List<List<dynamic>> _rowsToBulkValues(
+    List<String> columns,
+    List<Map<String, dynamic>> rows,
+    List<odbc_fast.BulkColumnSpec> specs,
+  ) {
+    return rows.map((row) {
+      return List.generate(columns.length, (i) {
+        final val = row[columns[i]];
+        if (specs[i].colType == odbc_fast.BulkColumnType.i32 && val is bool) {
+          return val ? 1 : 0;
+        }
+        if (specs[i].colType == odbc_fast.BulkColumnType.timestamp &&
+            val is DateTime) {
+          return DateTime.fromMillisecondsSinceEpoch(
+              val.millisecondsSinceEpoch);
+        }
+        return val;
+      });
+    }).toList();
   }
 
   Future<Result<Unit>> startTransaction() async {

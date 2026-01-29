@@ -262,6 +262,65 @@ class MyOdbc implements DatabaseDriver {
     }
   }
 
+  /// Bulk insert usando protocolo binário do odbc_fast (mais rápido que SQL texto).
+  Future<Result<int>> bulkInsertNative(
+    String tableName,
+    List<odbc.BulkColumnSpec> columnSpecs,
+    List<List<dynamic>> rowValues,
+  ) async {
+    final cid = _connectionId;
+    if (cid == null) {
+      return Failure(ConnectionError(
+        'Não conectado. Chame connect() antes de bulkInsertNative.',
+        null,
+        StackTrace.current,
+      ));
+    }
+    if (rowValues.isEmpty) return const Success(0);
+    try {
+      final builder = odbc.BulkInsertBuilder()..table(tableName);
+      for (final spec in columnSpecs) {
+        builder.addColumn(
+          spec.name,
+          spec.colType,
+          nullable: spec.nullable,
+          maxLen: spec.maxLen,
+        );
+      }
+      for (final row in rowValues) {
+        builder.addRow(row);
+      }
+      final result = await _service.bulkInsert(
+        cid,
+        builder.tableName,
+        builder.columnNames,
+        builder.build(),
+        builder.rowCount,
+      );
+      return result.fold(
+        (count) => Success(count),
+        (e) {
+          if (e is odbc.OdbcError) {
+            return Failure(_mapOdbcError(e));
+          }
+          return Failure(QueryError(
+            'Falha no bulk insert',
+            query: null,
+            originalError: e,
+            stackTrace: StackTrace.current,
+          ));
+        },
+      );
+    } catch (err, stackTrace) {
+      return Failure(QueryError(
+        'Falha no bulk insert',
+        query: null,
+        originalError: err,
+        stackTrace: stackTrace,
+      ));
+    }
+  }
+
   @override
   Future<Result<Unit>> disconnect() async {
     final cid = _connectionId;
