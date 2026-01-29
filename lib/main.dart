@@ -4,8 +4,6 @@ import 'package:result_dart/result_dart.dart';
 
 import 'package:demo_odbc/dao/sql_command.dart';
 import 'package:demo_odbc/dao/config/database_config.dart';
-import 'package:demo_odbc/dao/safe_select_builder.dart';
-import 'package:demo_odbc/dao/table_metadata.dart';
 
 void main() async {
   await selectExemplo();
@@ -17,7 +15,7 @@ Future<void> selectExemplo() async {
     driverName: 'SQL Server Native Client 11.0',
     username: 'sa',
     password: '123abc.',
-    database: 'NSE',
+    database: 'Estacao',
     server: 'CESAR_CARLOS\\DATA7',
     port: 1433,
   );
@@ -25,20 +23,12 @@ Future<void> selectExemplo() async {
   final query = SqlCommand(config);
   var recordCount = 0;
 
-  final result = await query.connect().flatMap((_) async {
-    final metadata = TableMetadata(query.odbc);
-    final safeBuilder = SafeSelectBuilder(metadata);
+  query.commandText = '''
+    SELECT *
+    FROM Produto
+  ''';
 
-    final safeColsResult = await safeBuilder.getSafeColumns('Cliente');
-    if (safeColsResult.isError()) throw safeColsResult.exceptionOrNull()!;
-
-    query.commandText = '''
-      SELECT *
-      FROM Produto
-    ''';
-
-    return await query.open();
-  });
+  final result = await query.connect().flatMap((_) => query.open());
 
   try {
     result.fold(

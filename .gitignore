@@ -21,6 +21,9 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
+# ODBC Fast native DLL (copied by scripts/copy_odbc_dll.ps1)
+/odbc_engine.dll
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id

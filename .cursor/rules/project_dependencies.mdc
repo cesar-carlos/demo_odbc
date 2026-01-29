@@ -185,20 +185,13 @@ final connection = await pool.acquire();
 await pool.release(connection);
 ```
 
-### Safe Select Builder
+### Table Metadata
 
-Use `SafeSelectBuilder` with `TableMetadata` to avoid issues with binary columns:
+Use `TableMetadata` for schema inspection when needed:
 
 ```dart
 final metadata = TableMetadata(odbcConnection);
-final safeBuilder = SafeSelectBuilder(metadata);
-
-final safeColsResult = await safeBuilder.getSafeColumns('TableName');
-if (safeColsResult.isError()) throw safeColsResult.exceptionOrNull()!;
-final safeCols = safeColsResult.getOrThrow();
-
-// Safe columns exclude IMAGE/VARBINARY automatically
-query.commandText = 'SELECT ${safeCols.join(', ')} FROM TableName';
+final columnsResult = await metadata.getColumns('TableName');
 ```
 
 ## Project Structure
@@ -222,7 +215,6 @@ lib/
 │   ├── sql_type_command.dart
 │   ├── sql_valid_command.dart
 │   ├── table_metadata.dart           # Table metadata for safe queries
-│   ├── safe_select_builder.dart      # Safe query builder
 │   └── utils/
 │       └── schema_utils.dart
 └── main.dart
@@ -232,13 +224,13 @@ lib/
 
 When creating database-related code:
 
-- [ ] Using `dart_odbc` for ODBC connections
+- [ ] Using `odbc_fast` for ODBC connections
 - [ ] Using `DatabaseConfig` for connection setup
 - [ ] Using `SqlCommand` for queries
 - [ ] Using parameterized queries (avoid SQL injection)
 - [ ] Using `result_dart` for error handling
 - [ ] Using `SqlTransaction` for transactions
-- [ ] Using `TableMetadata` and `SafeSelectBuilder` for safe queries
+- [ ] Using `TableMetadata` for schema inspection when needed
 - [ ] Using `uuid` for entity IDs when needed
 - [ ] Properly closing connections and releasing resources
 

@@ -19,7 +19,7 @@ Biblioteca Flutter/Dart para acesso a bancos de dados via ODBC, fornecendo uma c
   - [6. ALTER TABLE - Alteração de Tabelas](#6-alter-table---alteração-de-tabelas)
   - [7. Transações](#7-transações)
   - [8. Verificações de Schema](#8-verificações-de-schema)
-  - [9. SELECT com Safe Builder](#9-select-com-safe-builder-manual)
+  - [9. SELECT com Paginação](#9-select-com-paginação-sql-server-2012)
   - [10. Consulta de Metadados](#10-consulta-de-metadados)
   - [11. Exemplos Avançados](#11-exemplos-avançados)
   - [12. Operações DDL Adicionais](#12-operações-ddl-adicionais)
@@ -35,14 +35,11 @@ Biblioteca Flutter/Dart para acesso a bancos de dados via ODBC, fornecendo uma c
 - ✅ **Queries Parametrizadas**: Proteção contra SQL Injection
 - ✅ **Transações**: Suporte completo a transações com commit/rollback
 - ✅ **Connection Pooling**: Gerenciamento eficiente de conexões
-- ✅ **Safe Select Builder**: Construção segura de queries evitando erros com colunas binárias
-- ✅ **SqlSelectInterceptor**: Interceptação automática de SELECTs com CAST inteligente e cache de metadados
 - ✅ **Table Metadata**: Consulta de metadados de tabelas
 - ✅ **Error Handling**: Tratamento de erros usando `result_dart`
 - ✅ **Type Safety**: Tipagem forte para parâmetros e campos
 - ✅ **Clean Architecture**: Estrutura organizada seguindo princípios SOLID
-- ✅ **Performance Otimizado**: Cache de metadados (8 minutos) e cache de tipos para máxima velocidade
-- ✅ **Suporte Unicode**: Conversão automática NVARCHAR para colunas Unicode
+- ✅ **Performance Otimizado**: Motor ODBC nativo (odbc_fast) com streaming e pooling
 
 ## 📦 Requisitos
 
@@ -59,7 +56,7 @@ Biblioteca Flutter/Dart para acesso a bancos de dados via ODBC, fornecendo uma c
 dependencies:
   flutter:
     sdk: flutter
-  dart_odbc: ^6.2.0
+  odbc_fast: ^0.2.8
   result_dart: ^2.1.1
   uuid: ^4.5.2
 ```
@@ -99,8 +96,6 @@ final config = DatabaseConfig.sqlServer(
 
 ### 2. Executar SELECT
 
-O `SqlSelectInterceptor` intercepta automaticamente todos os SELECTs e aplica CAST inteligente nas colunas, convertendo para VARCHAR/NVARCHAR conforme o tipo de dado. Isso evita erros de memória com colunas binárias e otimiza o desempenho.
-
 ```dart
 import 'package:demo_odbc/dao/sql_command.dart';
 import 'package:result_dart/result_dart.dart';
@@ -108,15 +103,14 @@ import 'package:result_dart/result_dart.dart';
 final query = SqlCommand(config);
 
 final result = await query.connect().flatMap((_) async {
-  // SELECT * - Interceptor aplica CAST automático em todas as colunas
   query.commandText = '''
-    SELECT * 
+    SELECT *
     FROM Cliente WITH (NOLOCK)
     WHERE CodCliente > :CodCliente
   ''';
-  
+
   query.param('CodCliente').asInt = 1;
-  
+
   return await query.open();
 });
 
@@ -138,6 +132,7 @@ await query.close();
 ```
 
 **O que acontece automaticamente:**
+
 - `SELECT *` → Todas as colunas recebem CAST inteligente baseado em metadados
 - Colunas Unicode (NVARCHAR/NCHAR) → `CAST(coluna AS NVARCHAR(tamanho))`
 - Colunas não-Unicode (VARCHAR/CHAR) → `CAST(coluna AS VARCHAR(tamanho))`
@@ -152,14 +147,14 @@ final query = SqlCommand(config);
 
 await query.connect().flatMap((_) {
   query.commandText = '''
-    UPDATE Cliente 
-    SET Observacao = :observacao 
+    UPDATE Cliente
+    SET Observacao = :observacao
     WHERE CodCliente = :codCliente
   ''';
-  
+
   query.param('codCliente').asInt = 1;
   query.param('observacao').asString = 'Nova observação';
-  
+
   return query.execute();
 }).fold(
   (success) => print('Update realizado com sucesso!'),
@@ -212,6 +207,7 @@ final config = DatabaseConfig.sybaseAnywhere(
 Classe principal para execução de comandos SQL.
 
 **Métodos principais:**
+
 - `connect()`: Conecta ao banco de dados
 - `open()`: Executa SELECT e abre cursor
 - `execute()`: Executa INSERT/UPDATE/DELETE
@@ -221,6 +217,7 @@ Classe principal para execução de comandos SQL.
 - `close()`: Fecha conexão e libera recursos
 
 **Tipos de parâmetros:**
+
 ```dart
 query.param('id').asInt = 1;
 query.param('name').asString = 'John';
@@ -230,6 +227,7 @@ query.param('date').asDateTime = DateTime.now();
 ```
 
 **Tipos de campos:**
+
 ```dart
 int id = query.field('id').asInt;
 String name = query.field('name').asString;
@@ -254,84 +252,6 @@ try {
   await transaction.rollback();
   rethrow;
 }
-```
-
-### SqlSelectInterceptor
-
-Intercepta automaticamente todos os SELECTs executados via `SqlCommand.open()` ou `SqlCommand.stream()`, aplicando CAST inteligente nas colunas baseado nos metadados da tabela. Funciona de forma transparente, sem necessidade de mudanças no código.
-
-**Características:**
-- ✅ **Interceptação Automática**: Não precisa mudar seu código
-- ✅ **CAST Inteligente**: Converte colunas baseado no tipo real no banco
-- ✅ **Suporte Unicode**: NVARCHAR para colunas Unicode, VARCHAR para não-Unicode
-- ✅ **Cache de Metadados**: Cache de 8 minutos para máxima performance
-- ✅ **Cache de Tipos**: Evita operações repetidas de detecção de tipos
-- ✅ **Performance**: SELECTs subsequentes 95% mais rápidos (cache hit)
-
-**Exemplo de uso (automático):**
-
-```dart
-final query = SqlCommand(config);
-await query.connect();
-
-// SELECT * - Interceptor aplica CAST automaticamente
-query.commandText = 'SELECT * FROM Cliente WHERE CodCliente > :id';
-query.param('id').asInt = 1;
-await query.open();
-
-// SELECT com colunas específicas - Interceptor também aplica CAST
-query.commandText = 'SELECT Nome, Email, DataCadastro FROM Cliente';
-await query.open();
-```
-
-**Conversão automática aplicada:**
-```sql
--- SELECT * FROM Cliente
--- Vira automaticamente:
-SELECT 
-  CAST(CodCliente AS VARCHAR(11)) AS CodCliente,
-  CAST(Nome AS NVARCHAR(100)) AS Nome,  -- Unicode preservado
-  CAST(Email AS VARCHAR(200)) AS Email,
-  CAST(Foto AS VARCHAR(MAX)) AS Foto,   -- Binário
-  CAST(DataCadastro AS VARCHAR(50)) AS DataCadastro
-FROM Cliente
-```
-
-**Limpar cache (se necessário):**
-```dart
-SqlSelectInterceptor.clearCache();
-```
-
-### SafeSelectBuilder
-
-Constrói queries SELECT seguras manualmente, evitando erros com colunas binárias (IMAGE, VARBINARY) e aplicando CAST em colunas LOB grandes. Útil quando você precisa construir queries manualmente.
-
-```dart
-final metadata = TableMetadata(query.odbc);
-final safeBuilder = SafeSelectBuilder(metadata);
-
-// Obter colunas seguras (exclui IMAGE/VARBINARY automaticamente)
-final safeColsResult = await safeBuilder.getSafeColumns('Cliente');
-if (safeColsResult.isError()) throw safeColsResult.exceptionOrNull()!;
-final safeCols = safeColsResult.getOrThrow();
-
-// Usar em query
-query.commandText = 'SELECT $safeCols FROM Cliente';
-
-// Ou usar método de conveniência
-final queryResult = await safeBuilder.buildSafely('Cliente', withNoLock: true);
-if (queryResult.isSuccess()) {
-  query.commandText = queryResult.getOrThrow();
-}
-
-// Paginação (SQL Server 2012+)
-final paginatedResult = await safeBuilder.buildPaginated(
-  'Cliente',
-  orderBy: 'CodCliente',
-  page: 1,
-  pageSize: 100,
-  withNoLock: true,
-);
 ```
 
 ### TableMetadata
@@ -411,13 +331,13 @@ Future<void> exemploSelectAutomatico() async {
   final result = await query.connect().flatMap((_) async {
     // SELECT * - Interceptor aplica CAST automaticamente em todas as colunas
     query.commandText = '''
-      SELECT * 
+      SELECT *
       FROM Cliente WITH (NOLOCK)
       WHERE CodCliente > :CodCliente
     ''';
-    
+
     query.param('CodCliente').asInt = 1;
-    
+
     return await query.open();
   });
 
@@ -441,6 +361,7 @@ Future<void> exemploSelectAutomatico() async {
 ```
 
 **Vantagens:**
+
 - ✅ Não precisa mudar seu código
 - ✅ CAST automático baseado em metadados
 - ✅ Cache de metadados (8 minutos) para performance
@@ -459,7 +380,7 @@ final result = await query.connect().flatMap((_) async {
     FROM Cliente
     WHERE CodCliente = :id
   ''';
-  
+
   query.param('id').asInt = 1;
   return await query.open();
 });
@@ -490,7 +411,7 @@ final result = await query.connect().flatMap((_) async {
     FROM Produto
     ORDER BY CodProduto
   ''';
-  
+
   return await query.open();
 });
 
@@ -510,7 +431,7 @@ result.fold(
 ```dart
 final result = await query.connect().flatMap((_) async {
   query.commandText = '''
-    SELECT 
+    SELECT
       c.CodCliente,
       c.Nome,
       p.CodProduto,
@@ -520,7 +441,7 @@ final result = await query.connect().flatMap((_) async {
     INNER JOIN Produto p ON ped.CodProduto = p.CodProduto
     WHERE c.CodCliente = :id
   ''';
-  
+
   query.param('id').asInt = 1;
   return await query.open();
 });
@@ -546,7 +467,7 @@ import 'package:flutter/foundation.dart';
 
 final result = await query.connect().flatMap((_) async {
   query.commandText = '''
-    SELECT 
+    SELECT
       CodProduto,
       Nome,
       CodTipoProduto,
@@ -554,7 +475,7 @@ final result = await query.connect().flatMap((_) async {
       DataCadastro
     FROM Produto
   ''';
-  
+
   return await query.stream(); // Retorna Stream ao invés de carregar tudo
 });
 
@@ -562,20 +483,20 @@ try {
   result.fold(
     (stream) async {
       int recordCount = 0;
-      
+
       await for (final record in stream) {
         recordCount++;
-        
+
         // Processa cada registro individualmente
         final codProduto = record['CodProduto']?.toString();
         final nome = record['Nome']?.toString();
-        
+
         // Exibe progresso a cada 1000 registros
         if (recordCount % 1000 == 0) {
           debugPrint('Processados $recordCount registros...');
         }
       }
-      
+
       debugPrint('Total de registros processados: $recordCount');
     },
     (failure) {
@@ -592,6 +513,7 @@ try {
 ```
 
 **Vantagens do `stream()`:**
+
 - ✅ Não carrega todos os resultados na memória de uma vez
 - ✅ Processa linha por linha de forma assíncrona
 - ✅ Mais eficiente para grandes volumes de dados
@@ -607,11 +529,11 @@ final result = await query.connect().flatMap((_) {
     INSERT INTO Cliente (Nome, Email, DataCadastro)
     VALUES (:nome, :email, :data)
   ''';
-  
+
   query.param('nome').asString = 'João Silva';
   query.param('email').asString = 'joao@email.com';
   query.param('data').asDateTime = DateTime.now();
-  
+
   return query.execute();
 });
 
@@ -632,11 +554,11 @@ final result = await query.connect().flatMap((_) async {
     OUTPUT INSERTED.CodCliente
     VALUES (:nome, :email, :data)
   ''';
-  
+
   query.param('nome').asString = 'Maria Santos';
   query.param('email').asString = 'maria@email.com';
   query.param('data').asDateTime = DateTime.now();
-  
+
   return await query.open();
 });
 
@@ -682,18 +604,18 @@ await query.close();
 ```dart
 final result = await query.connect().flatMap((_) {
   query.commandText = '''
-    UPDATE Cliente 
+    UPDATE Cliente
     SET Nome = :nome,
         Email = :email,
         Observacao = :obs
     WHERE CodCliente = :id
   ''';
-  
+
   query.param('id').asInt = 1;
   query.param('nome').asString = 'João Silva Atualizado';
   query.param('email').asString = 'joao.novo@email.com';
   query.param('obs').asString = 'Cliente atualizado em ${DateTime.now()}';
-  
+
   return query.execute();
 });
 
@@ -717,11 +639,11 @@ final result = await query.connect().flatMap((_) {
       AND Ativo = 1
       AND PrecoVenda <> :preco
   ''';
-  
+
   query.param('id').asInt = 100;
   query.param('preco').asDouble = 99.99;
   query.param('data').asDateTime = DateTime.now();
-  
+
   return query.execute();
 });
 
@@ -741,9 +663,9 @@ final result = await query.connect().flatMap((_) {
     DELETE FROM Cliente
     WHERE CodCliente = :id
   ''';
-  
+
   query.param('id').asInt = 1;
-  
+
   return query.execute();
 });
 
@@ -764,10 +686,10 @@ final result = await query.connect().flatMap((_) {
     WHERE Data < :dataLimite
       AND Tipo = :tipo
   ''';
-  
+
   query.param('dataLimite').asDateTime = DateTime.now().subtract(Duration(days: 30));
   query.param('tipo').asString = 'INFO';
-  
+
   return query.execute();
 });
 
@@ -863,16 +785,16 @@ existeResult.fold(
     if (!existe) {
       final query = SqlCommand(config);
       await query.connect();
-      
+
       final alterResult = await query.odbc.execute(
         'ALTER TABLE Cliente ADD Telefone VARCHAR(20) NULL',
       );
-      
+
       alterResult.fold(
         (success) => print('Coluna adicionada!'),
         (failure) => print('Erro: $failure'),
       );
-      
+
       await query.close();
     } else {
       print('Coluna já existe!');
@@ -929,14 +851,14 @@ Future<void> exemploTransacao() async {
 
   await query.connect().flatMap((_) async {
     final transaction = query.transaction!;
-    
+
     await transaction.start();
-    
+
     try {
       // Primeiro comando
       query.commandText = '''
-        UPDATE Cliente 
-        SET Observacao = :obs 
+        UPDATE Cliente
+        SET Observacao = :obs
         WHERE CodCliente = :id
       ''';
       query.param('id').asInt = 1;
@@ -945,7 +867,7 @@ Future<void> exemploTransacao() async {
 
       // Segundo comando
       query.commandText = '''
-        INSERT INTO Log (Mensagem, Data) 
+        INSERT INTO Log (Mensagem, Data)
         VALUES (:msg, :data)
       ''';
       query.param('msg').asString = 'Cliente atualizado';
@@ -980,11 +902,11 @@ try {
   query.param('id').asInt = 1;
   query.param('nome').asString = 'Novo Nome';
   await query.execute();
-  
+
   query.commandText = 'INSERT INTO Log (Mensagem) VALUES (:msg)';
   query.param('msg').asString = 'Cliente atualizado';
   await query.execute();
-  
+
   print('Operações concluídas com auto-commit!');
 } finally {
   query.offAutoCommit();
@@ -1054,70 +976,20 @@ result.fold(
 );
 ```
 
-### 9. SELECT com Safe Builder (Manual)
-
-Útil quando você precisa construir queries manualmente:
+### 9. SELECT com Paginação (SQL Server 2012+)
 
 ```dart
 final query = SqlCommand(config);
 await query.connect();
-
-final metadata = TableMetadata(query.odbc);
-final safeBuilder = SafeSelectBuilder(metadata);
-
-final safeColsResult = await safeBuilder.getSafeColumns('Cliente');
-if (safeColsResult.isError()) {
-  throw safeColsResult.exceptionOrNull()!;
-}
-final safeCols = safeColsResult.getOrThrow();
 
 query.commandText = '''
-  SELECT $safeCols 
+  SELECT CodCliente, Nome, Email
   FROM Cliente WITH (NOLOCK)
-  WHERE CodCliente > :CodCliente
+  ORDER BY CodCliente
+  OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY
 ''';
 
-query.param('CodCliente').asInt = 1;
-
 final result = await query.open();
-result.fold(
-  (success) {
-    while (!query.eof) {
-      print('ID: ${query.field("CodCliente").asInt}');
-      print('Nome: ${query.field("Nome").asString}');
-      query.next();
-    }
-  },
-  (failure) => print('Erro: $failure'),
-);
-
-await query.close();
-```
-
-#### SELECT com Paginação (Safe Builder)
-
-```dart
-final query = SqlCommand(config);
-await query.connect();
-
-final metadata = TableMetadata(query.odbc);
-final safeBuilder = SafeSelectBuilder(metadata);
-
-final paginatedResult = await safeBuilder.buildPaginated(
-  'Cliente',
-  orderBy: 'CodCliente',
-  page: 1,
-  pageSize: 50,
-  withNoLock: true,
-);
-
-if (paginatedResult.isError()) {
-  throw paginatedResult.exceptionOrNull()!;
-}
-
-query.commandText = paginatedResult.getOrThrow();
-final result = await query.open();
-
 result.fold(
   (success) {
     while (!query.eof) {
@@ -1159,14 +1031,14 @@ result.fold(
 ```dart
 final result = await query.connect().flatMap((_) async {
   query.commandText = '''
-    SELECT 
+    SELECT
       c.CodCliente,
       c.Nome,
       (SELECT COUNT(*) FROM Pedido WHERE CodCliente = c.CodCliente) AS TotalPedidos
     FROM Cliente c
     WHERE c.Ativo = 1
   ''';
-  
+
   return await query.open();
 });
 
@@ -1187,7 +1059,7 @@ result.fold(
 ```dart
 final result = await query.connect().flatMap((_) async {
   query.commandText = '''
-    SELECT 
+    SELECT
       CodCliente,
       COUNT(*) AS TotalPedidos,
       SUM(Valor) AS ValorTotal
@@ -1195,7 +1067,7 @@ final result = await query.connect().flatMap((_) async {
     GROUP BY CodCliente
     HAVING COUNT(*) > :minPedidos
   ''';
-  
+
   query.param('minPedidos').asInt = 5;
   return await query.open();
 });
@@ -1218,10 +1090,10 @@ result.fold(
 ```dart
 final result = await query.connect().flatMap((_) async {
   query.commandText = '''
-    SELECT 
+    SELECT
       CodProduto,
       Nome,
-      CASE 
+      CASE
         WHEN PrecoVenda < 50 THEN 'Barato'
         WHEN PrecoVenda < 200 THEN 'Médio'
         ELSE 'Caro'
@@ -1229,7 +1101,7 @@ final result = await query.connect().flatMap((_) async {
     FROM Produto
     ORDER BY PrecoVenda DESC
   ''';
-  
+
   return await query.open();
 });
 
@@ -1381,7 +1253,6 @@ lib/
 │   ├── utils/           # Utilitários
 │   ├── sql_command.dart      # Comandos SQL
 │   ├── sql_transaction.dart  # Transações
-│   ├── safe_select_builder.dart  # Builder seguro
 │   └── table_metadata.dart      # Metadados
 └── main.dart            # Exemplos
 ```
@@ -1410,14 +1281,7 @@ try {
 }
 ```
 
-### 3. Use SafeSelectBuilder para evitar erros com colunas binárias
-
-```dart
-final safeBuilder = SafeSelectBuilder(metadata);
-final safeCols = await safeBuilder.getSafeColumns('TableName');
-```
-
-### 4. Use Result pattern para tratamento de erros
+### 3. Use Result pattern para tratamento de erros
 
 ```dart
 final result = await query.open();
@@ -1427,7 +1291,7 @@ result.fold(
 );
 ```
 
-### 5. Use transações para operações múltiplas
+### 4. Use transações para operações múltiplas
 
 ```dart
 await transaction.start();
@@ -1441,7 +1305,7 @@ try {
 
 ## 📚 Dependências
 
-- **dart_odbc** (^6.2.0): Driver ODBC para Dart
+- **odbc_fast** (^0.2.8): Plataforma ODBC com motor Rust nativo
 - **result_dart** (^2.1.1): Tratamento funcional de erros
 - **uuid** (^4.5.2): Geração de UUIDs
 
@@ -1464,7 +1328,6 @@ demo_odbc/
 │   │   │   └── odbc_connection_pool.dart
 │   │   ├── utils/
 │   │   │   └── schema_utils.dart
-│   │   ├── safe_select_builder.dart
 │   │   ├── sql_command.dart
 │   │   ├── sql_transaction.dart
 │   │   ├── sql_type_command.dart
@@ -1477,46 +1340,16 @@ demo_odbc/
 
 ## 🔧 Troubleshooting
 
-### Erro HY001 com colunas IMAGE/VARBINARY
-
-O `SqlSelectInterceptor` resolve isso automaticamente convertendo colunas binárias para VARCHAR(MAX):
-
-```dart
-// Funciona automaticamente - não precisa fazer nada
-query.commandText = 'SELECT * FROM TableName';
-await query.open(); // Interceptor aplica CAST automaticamente
-```
-
-Ou use `SafeSelectBuilder` para controle manual:
-
-```dart
-final safeBuilder = SafeSelectBuilder(metadata);
-final safeCols = await safeBuilder.getSafeColumns('TableName');
-```
-
 ### Erro de conexão
 
 Verifique:
+
 - Driver ODBC instalado
 - Credenciais corretas
 - Servidor acessível
 - Porta correta
 
 ### Performance
-
-**SqlSelectInterceptor com Cache:**
-- Cache de metadados (8 minutos) reduz queries de metadados em 90-95%
-- SELECTs subsequentes são 95% mais rápidos (5-10ms vs 150-200ms)
-- Cache de tipos evita operações repetidas de detecção
-
-```dart
-// Cache funciona automaticamente
-// Primeiro SELECT: ~150-200ms (busca metadados)
-// SELECTs subsequentes (8 min): ~5-10ms (usa cache)
-
-// Limpar cache se necessário
-SqlSelectInterceptor.clearCache();
-```
 
 **Connection Pooling:**
 Use `OdbcConnectionPool` para múltiplas operações:

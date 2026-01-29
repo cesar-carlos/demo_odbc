@@ -10,13 +10,10 @@ import 'package:demo_odbc/dao/sql_valid_command.dart';
 import 'package:demo_odbc/dao/sql_type_command.dart';
 import 'package:demo_odbc/dao/sql_transaction.dart';
 import 'package:demo_odbc/dao/utils/schema_utils.dart';
-import 'package:demo_odbc/dao/sql_select_interceptor.dart';
-import 'package:demo_odbc/dao/table_metadata.dart';
 
 class SqlCommand {
   final DatabaseDriver odbc;
   late final SchemaUtils schema;
-  late final SqlSelectInterceptor _selectInterceptor;
   String? commandText;
   final List<SqlTypeCommand> _params = [];
   List<Map<String, dynamic>> _result = [];
@@ -27,7 +24,6 @@ class SqlCommand {
   SqlTransaction? transaction;
 
   bool _useReadUncommitted = false;
-  bool _disableInterceptorForStream = false;
 
   SqlCommand(DatabaseConfig config)
       : odbc = MyOdbc(
@@ -41,7 +37,6 @@ class SqlCommand {
         ) {
     transaction = SqlTransaction(odbc);
     schema = SchemaUtils(odbc);
-    _selectInterceptor = SqlSelectInterceptor(TableMetadata(odbc));
   }
 
   SqlTypeCommand param(String name) {
@@ -96,17 +91,6 @@ class SqlCommand {
         }
       }
 
-      if (SqlValidCommand.isSelectQuery(query)) {
-        if (!_disableInterceptorForStream) {
-          final interceptedResult =
-              await _selectInterceptor.interceptSelect(query);
-          if (interceptedResult.isError()) {
-            return Failure(interceptedResult.exceptionOrNull()!);
-          }
-          query = interceptedResult.getOrThrow();
-        }
-      }
-
       final preparedResult = _substituteParameters(query);
       if (preparedResult.isError()) {
         return Failure(preparedResult.exceptionOrNull()!);
@@ -143,14 +127,6 @@ class SqlCommand {
 
   void disableReadUncommitted() {
     _useReadUncommitted = false;
-  }
-
-  void disableInterceptorForStream() {
-    _disableInterceptorForStream = true;
-  }
-
-  void enableInterceptor() {
-    _disableInterceptorForStream = false;
   }
 
   String _addNoLock(String? query) {
@@ -191,16 +167,7 @@ class SqlCommand {
     _currentIndex = -1;
     _currentRecord = {};
 
-    var queryToProcess = commandText!;
-    if (SqlValidCommand.isSelectQuery(queryToProcess)) {
-      final interceptedResult =
-          await _selectInterceptor.interceptSelect(queryToProcess);
-      if (interceptedResult.isError()) {
-        return Failure(interceptedResult.exceptionOrNull()!);
-      }
-      queryToProcess = interceptedResult.getOrThrow();
-    }
-
+    final queryToProcess = commandText!;
     return _substituteParameters(queryToProcess).fold(
       (prepared) async {
         if (_useReadUncommitted) {
@@ -315,13 +282,15 @@ class SqlCommand {
     int totalAffected = 0;
     int batchCount = (rows.length / batchSize).ceil();
 
-    debugPrint('BulkInsert: Starting ${rows.length} records in $batchCount batches of $batchSize');
+    debugPrint(
+        'BulkInsert: Starting ${rows.length} records in $batchCount batches of $batchSize');
 
     for (var i = 0; i < rows.length; i += batchSize) {
       final end = (i + batchSize < rows.length) ? i + batchSize : rows.length;
       final batch = rows.sublist(i, end);
 
-      debugPrint('BulkInsert: Processing batch ${((i / batchSize) + 1).toInt()}/$batchCount (${batch.length} records)');
+      debugPrint(
+          'BulkInsert: Processing batch ${((i / batchSize) + 1).toInt()}/$batchCount (${batch.length} records)');
 
       final valuesBuffer = StringBuffer();
 
@@ -367,12 +336,12 @@ class SqlCommand {
 
       if (result.isSuccess()) {
         totalAffected += batch.length;
-        debugPrint('BulkInsert: Batch succeeded, total affected: $totalAffected');
+        debugPrint(
+            'BulkInsert: Batch succeeded, total affected: $totalAffected');
       } else {
         final error = result.exceptionOrNull();
         debugPrint('BulkInsert error: $error');
-        return Failure(error ??
-            Exception('Unknown error in Bulk Insert'));
+        return Failure(error ?? Exception('Unknown error in Bulk Insert'));
       }
     }
 
