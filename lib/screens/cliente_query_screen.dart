@@ -128,6 +128,8 @@ class _ClienteQueryScreenState extends State<ClienteQueryScreen> {
       final config = _buildConfig();
       command = SqlCommand(config);
       command.commandText = sql;
+      // Evita bloqueio na tabela: consulta roda com READ UNCOMMITTED (não adquire locks).
+      command.enableReadUncommitted();
 
       final stopwatchConnect = Stopwatch()..start();
       final connectResult = await command.connect().timeout(

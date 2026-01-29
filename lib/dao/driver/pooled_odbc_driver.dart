@@ -1,116 +1,28 @@
 import 'package:odbc_fast/odbc_fast.dart' as odbc;
 import 'package:result_dart/result_dart.dart';
 
-import 'package:demo_odbc/dao/config/database_config.dart';
 import 'package:demo_odbc/dao/config/database_type.dart';
 import 'package:demo_odbc/dao/driver/database_driver.dart';
 import 'package:demo_odbc/dao/driver/database_error.dart';
 
-/// Implementação de [DatabaseDriver] usando odbc_fast (async).
+/// Implementação de [DatabaseDriver] que usa uma conexão obtida do pool nativo odbc_fast.
 ///
-/// Para Flutter, o ServiceLocator é inicializado com useAsync: true para
-/// manter a UI responsiva. Chame [OdbcConnectionPool] ou use [SqlCommand]
-/// normalmente; a primeira conexão inicializa o locator.
-class MyOdbc implements DatabaseDriver {
-  static bool _locatorInitialized = false;
+/// [connect] é no-op (a conexão já vem do pool). [disconnect] devolve a conexão
+/// ao pool via [odbc.OdbcService.poolReleaseConnection].
+class PooledOdbcDriver implements DatabaseDriver {
+  PooledOdbcDriver({
+    required this.connectionId,
+    required this.service,
+    required this.poolId,
+    required this.databaseType,
+  });
 
-  final String driverName;
-  final String username;
-  final String password;
-  final String database;
-  final String server;
-  final int port;
+  final String connectionId;
+  final odbc.OdbcService service;
+  final int poolId;
   final DatabaseType databaseType;
 
-  /// Maximum result buffer size in bytes (odbc_fast 0.3.0+).
-  /// When null, package default (16 MB) is used. Set e.g. 64*1024*1024 for large result sets.
-  final int? maxResultBufferBytes;
-
-  String? _connectionId;
   int? _currentTxnId;
-
-  MyOdbc({
-    required this.driverName,
-    required this.username,
-    required this.password,
-    required this.database,
-    required this.server,
-    required this.port,
-    DatabaseType? databaseType,
-    this.maxResultBufferBytes,
-  }) : databaseType = databaseType ?? DatabaseType.sqlServer;
-
-  /// Cria instância a partir de [DatabaseConfig] (útil para pool obter connection string).
-  factory MyOdbc.fromConfig(DatabaseConfig config) {
-    return MyOdbc(
-      driverName: config.driverName,
-      username: config.username,
-      password: config.password,
-      database: config.database,
-      server: config.server,
-      port: config.port,
-      databaseType: config.databaseType,
-      maxResultBufferBytes: config.maxResultBufferBytes,
-    );
-  }
-
-  odbc.OdbcService get _service {
-    if (!_locatorInitialized) {
-      odbc.ServiceLocator().initialize(useAsync: true);
-      _locatorInitialized = true;
-    }
-    return odbc.ServiceLocator().asyncService;
-  }
-
-  String getConnectionString() {
-    switch (databaseType) {
-      case DatabaseType.sqlServer:
-        return '''
-      DRIVER={$driverName};
-      Server=$server;
-      Port=$port;
-      Database=$database;
-      UID=$username;
-      PWD=$password;
-      Trusted_connection = yes;
-      MARS_Connection = yes;
-      MultipleActiveResultSets = true;
-      Packet Size = 16384;
-      TrustServerCertificate = yes;
-      Encrypt = false;
-      Connection Timeout = 30;
-      ReadOnly = 0;
-    '''
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
-
-      case DatabaseType.sybaseAnywhere:
-        return '''
-      DRIVER={$driverName};
-      ServerName=$server;
-      Port=$port;
-      DatabaseName=$database;
-      UID=$username;
-      PWD=$password;
-      Connection Timeout = 30;
-    '''
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
-
-      case DatabaseType.postgresql:
-        return '''
-      DRIVER={$driverName};
-      Server=$server;
-      Port=$port;
-      Database=$database;
-      UID=$username;
-      PWD=$password;
-      Connection Timeout = 30;
-    '''
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
-    }
-  }
 
   static List<Map<String, dynamic>> _queryResultToRows(odbc.QueryResult qr) {
     final cols = qr.columns;
@@ -147,54 +59,16 @@ class MyOdbc implements DatabaseDriver {
 
   @override
   Future<Result<Unit>> connect() async {
-    try {
-      await _service.initialize();
-      final options = maxResultBufferBytes != null
-          ? odbc.ConnectionOptions(maxResultBufferBytes: maxResultBufferBytes)
-          : null;
-      final connResult = await _service.connect(
-        getConnectionString(),
-        options: options,
-      );
-      return connResult.fold(
-        (connection) {
-          _connectionId = connection.id;
-          return const Success(unit);
-        },
-        (e) {
-          if (e is odbc.OdbcError) {
-            return Failure(_mapOdbcError(e));
-          }
-          return Failure(ConnectionError(
-            'Falha ao conectar ao banco de dados',
-            e,
-            StackTrace.current,
-          ));
-        },
-      );
-    } catch (err, stackTrace) {
-      return Failure(ConnectionError(
-        'Falha ao conectar ao banco de dados',
-        err,
-        stackTrace,
-      ));
-    }
+    return const Success(unit);
   }
 
   @override
   Future<Result<List<Map<String, dynamic>>>> execute(String query,
       {List<dynamic>? params}) async {
-    final cid = _connectionId;
-    if (cid == null) {
-      return Failure(ConnectionError(
-        'Não conectado. Chame connect() antes de execute.',
-        null,
-        StackTrace.current,
-      ));
-    }
     try {
       final paramsList = params ?? [];
-      final result = await _service.executeQueryParams(cid, query, paramsList);
+      final result =
+          await service.executeQueryParams(connectionId, query, paramsList);
 
       return result.fold(
         (qr) => Success(_queryResultToRows(qr)),
@@ -223,17 +97,10 @@ class MyOdbc implements DatabaseDriver {
   @override
   Future<Result<Stream<Map<String, dynamic>>>> executeCursor(String query,
       {List<dynamic>? params}) async {
-    final cid = _connectionId;
-    if (cid == null) {
-      return Failure(ConnectionError(
-        'Não conectado. Chame connect() antes de executeCursor.',
-        null,
-        StackTrace.current,
-      ));
-    }
     try {
       final paramsList = params ?? [];
-      final result = await _service.executeQueryParams(cid, query, paramsList);
+      final result =
+          await service.executeQueryParams(connectionId, query, paramsList);
 
       return result.fold(
         (qr) {
@@ -264,13 +131,8 @@ class MyOdbc implements DatabaseDriver {
 
   @override
   Future<Result<Unit>> disconnect() async {
-    final cid = _connectionId;
-    if (cid == null) {
-      return const Success(unit);
-    }
     try {
-      final result = await _service.disconnect(cid);
-      _connectionId = null;
+      final result = await service.poolReleaseConnection(connectionId);
       _currentTxnId = null;
       return result.fold(
         (_) => const Success(unit),
@@ -287,7 +149,7 @@ class MyOdbc implements DatabaseDriver {
             return Failure(_mapOdbcError(e));
           }
           return Failure(ConnectionError(
-            'Falha ao desconectar do banco de dados',
+            'Falha ao devolver conexão ao pool',
             e,
             StackTrace.current,
           ));
@@ -299,12 +161,11 @@ class MyOdbc implements DatabaseDriver {
           errorMessage.contains('connection closed') ||
           errorMessage.contains('lost connection') ||
           errorMessage.contains('not connected')) {
-        _connectionId = null;
         _currentTxnId = null;
         return const Success(unit);
       }
       return Failure(ConnectionError(
-        'Falha ao desconectar do banco de dados',
+        'Falha ao devolver conexão ao pool',
         err,
         stackTrace,
       ));
@@ -313,17 +174,9 @@ class MyOdbc implements DatabaseDriver {
 
   @override
   Future<Result<Unit>> startTransaction() async {
-    final cid = _connectionId;
-    if (cid == null) {
-      return Failure(ConnectionError(
-        'Não conectado. Chame connect() antes de startTransaction.',
-        null,
-        StackTrace.current,
-      ));
-    }
     try {
-      final result = await _service.beginTransaction(
-        cid,
+      final result = await service.beginTransaction(
+        connectionId,
         odbc.IsolationLevel.readCommitted,
       );
       return result.fold(
@@ -357,9 +210,8 @@ class MyOdbc implements DatabaseDriver {
 
   @override
   Future<Result<Unit>> commitTransaction() async {
-    final cid = _connectionId;
     final txnId = _currentTxnId;
-    if (cid == null || txnId == null) {
+    if (txnId == null) {
       return Failure(TransactionError(
         'Nenhuma transação ativa para commit.',
         null,
@@ -367,7 +219,7 @@ class MyOdbc implements DatabaseDriver {
       ));
     }
     try {
-      final result = await _service.commitTransaction(cid, txnId);
+      final result = await service.commitTransaction(connectionId, txnId);
       _currentTxnId = null;
       return result.fold(
         (_) => const Success(unit),
@@ -398,9 +250,8 @@ class MyOdbc implements DatabaseDriver {
 
   @override
   Future<Result<Unit>> rollbackTransaction() async {
-    final cid = _connectionId;
     final txnId = _currentTxnId;
-    if (cid == null || txnId == null) {
+    if (txnId == null) {
       return Failure(TransactionError(
         'Nenhuma transação ativa para rollback.',
         null,
@@ -408,7 +259,7 @@ class MyOdbc implements DatabaseDriver {
       ));
     }
     try {
-      final result = await _service.rollbackTransaction(cid, txnId);
+      final result = await service.rollbackTransaction(connectionId, txnId);
       _currentTxnId = null;
       return result.fold(
         (_) => const Success(unit),

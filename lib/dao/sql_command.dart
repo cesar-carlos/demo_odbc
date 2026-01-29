@@ -39,6 +39,14 @@ class SqlCommand {
     schema = SchemaUtils(odbc);
   }
 
+  /// Construtor para usar com pool: passe o [DatabaseDriver] retornado por
+  /// [OdbcConnectionPool.acquire] (ex.: [PooledOdbcDriver]). Ao terminar,
+  /// chame [driver.disconnect] ou [OdbcConnectionPool.release].
+  SqlCommand.withDriver(this.odbc) {
+    transaction = SqlTransaction(odbc);
+    schema = SchemaUtils(odbc);
+  }
+
   SqlTypeCommand param(String name) {
     final sqlType = SqlTypeCommand(name);
     _params.add(sqlType);

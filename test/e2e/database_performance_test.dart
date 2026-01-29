@@ -13,20 +13,13 @@ void main() {
   late SchemaUtils schema;
 
   setUpAll(() async {
-    final testConfig = TestDatabaseConfig.sqlServer(
-      driverName: 'SQL Server Native Client 11.0',
-      username: 'sa',
-      password: '123abc.',
-      database: 'Estacao',
-      server: 'CESAR_CARLOS\\DATA7',
-      port: 1433,
-    );
-
+    loadTestEnv();
+    final testConfig = TestDatabaseConfig.fromEnv();
     testConfig.validate();
     config = testConfig.toDatabaseConfig();
     command = SqlCommand(config);
     perfConfig = PerformanceTestConfig(
-      recordCount: 10000,
+      recordCount: 100000,
       batchSize: 1000,
       enableMetrics: true,
     );
@@ -86,7 +79,7 @@ void main() {
             'Throughput: ${recordsPerSecond.toStringAsFixed(2)} records/second');
       }
 
-      expect(stopwatch.elapsedMilliseconds, lessThan(300000));
+      expect(stopwatch.elapsedMilliseconds, lessThan(600000));
     });
 
     test('should update large amount of data efficiently', () async {
@@ -116,7 +109,7 @@ void main() {
             'Throughput: ${recordsPerSecond.toStringAsFixed(2)} records/second');
       }
 
-      expect(stopwatch.elapsedMilliseconds, lessThan(300000));
+      expect(stopwatch.elapsedMilliseconds, lessThan(600000));
     });
 
     test('should select all records efficiently', () async {
@@ -159,7 +152,7 @@ void main() {
         (failure) => fail('Should select all records: $failure'),
       );
 
-      expect(stopwatch.elapsedMilliseconds, lessThan(300000));
+      expect(stopwatch.elapsedMilliseconds, lessThan(600000));
     });
 
     test('should select with WHERE filter efficiently', () async {
@@ -244,11 +237,13 @@ void main() {
 
       final stopwatch = Stopwatch()..start();
 
+      final deleteCount = perfConfig.recordCount ~/ 2;
+
       command.clearParams();
       command.commandText =
           'DELETE FROM $perfTableName WHERE Id BETWEEN :minId AND :maxId';
       command.param('minId').asInt = 1;
-      command.param('maxId').asInt = 5000;
+      command.param('maxId').asInt = deleteCount;
 
       final deleteResult = await command.execute();
       stopwatch.stop();
@@ -260,15 +255,14 @@ void main() {
 
       if (perfConfig.enableMetrics) {
         final seconds = stopwatch.elapsedMilliseconds / 1000.0;
-        const deletedCount = 5000;
-        final recordsPerSecond = deletedCount / seconds;
+        final recordsPerSecond = deleteCount / seconds;
         print(
-            'DELETE Performance: $deletedCount records in ${stopwatch.elapsedMilliseconds}ms');
+            'DELETE Performance: $deleteCount records in ${stopwatch.elapsedMilliseconds}ms');
         print(
             'Throughput: ${recordsPerSecond.toStringAsFixed(2)} records/second');
       }
 
-      expect(stopwatch.elapsedMilliseconds, lessThan(300000));
+      expect(stopwatch.elapsedMilliseconds, lessThan(600000));
     });
 
     test('should delete all records efficiently', () async {
@@ -306,7 +300,7 @@ void main() {
         (failure) => fail('Should count records after delete all: $failure'),
       );
 
-      expect(stopwatch.elapsedMilliseconds, lessThan(300000));
+      expect(stopwatch.elapsedMilliseconds, lessThan(600000));
     });
   });
 

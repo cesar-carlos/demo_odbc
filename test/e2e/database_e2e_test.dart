@@ -12,15 +12,8 @@ void main() {
   late SchemaUtils schema;
 
   setUpAll(() async {
-    final testConfig = TestDatabaseConfig.sqlServer(
-      driverName: 'SQL Server Native Client 11.0',
-      username: 'sa',
-      password: '123abc.',
-      database: 'Estacao',
-      server: 'CESAR_CARLOS\\DATA7',
-      port: 1433,
-    );
-
+    loadTestEnv();
+    final testConfig = TestDatabaseConfig.fromEnv();
     testConfig.validate();
     config = testConfig.toDatabaseConfig();
     command = SqlCommand(config);
