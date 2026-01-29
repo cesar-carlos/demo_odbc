@@ -21,6 +21,10 @@ class MyOdbc implements DatabaseDriver {
   final int port;
   final DatabaseType databaseType;
 
+  /// Maximum result buffer size in bytes (odbc_fast 0.3.0+).
+  /// When null, package default (16 MB) is used. Set e.g. 64*1024*1024 for large result sets.
+  final int? maxResultBufferBytes;
+
   String? _connectionId;
   int? _currentTxnId;
 
@@ -32,6 +36,7 @@ class MyOdbc implements DatabaseDriver {
     required this.server,
     required this.port,
     DatabaseType? databaseType,
+    this.maxResultBufferBytes,
   }) : databaseType = databaseType ?? DatabaseType.sqlServer;
 
   odbc.OdbcService get _service {
@@ -129,7 +134,13 @@ class MyOdbc implements DatabaseDriver {
   Future<Result<Unit>> connect() async {
     try {
       await _service.initialize();
-      final connResult = await _service.connect(getConnectionString());
+      final options = maxResultBufferBytes != null
+          ? odbc.ConnectionOptions(maxResultBufferBytes: maxResultBufferBytes)
+          : null;
+      final connResult = await _service.connect(
+        getConnectionString(),
+        options: options,
+      );
       return connResult.fold(
         (connection) {
           _connectionId = connection.id;

@@ -198,10 +198,11 @@ packages:
   odbc_fast:
     dependency: "direct main"
     description:
-      path: "D:\\Developer\\dart_odbc_fast"
-      relative: false
-    source: path
-    version: "0.2.9"
+      name: odbc_fast
+      sha256: "8e784ac837f4cf4765909c2d2062b9a4bb771976cd628debdebf2b8b05ab8518"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.0"
   path:
     dependency: transitive
     description:

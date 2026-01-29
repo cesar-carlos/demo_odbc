@@ -9,6 +9,9 @@ class DatabaseConfig {
   final int port;
   final DatabaseType databaseType;
 
+  /// Maximum result buffer size in bytes (odbc_fast 0.3.0+). When null, package default (16 MB) is used.
+  final int? maxResultBufferBytes;
+
   DatabaseConfig({
     required this.driverName,
     required this.username,
@@ -17,6 +20,7 @@ class DatabaseConfig {
     required this.server,
     required this.port,
     DatabaseType? databaseType,
+    this.maxResultBufferBytes,
   }) : databaseType = databaseType ?? DatabaseType.sqlServer;
 
   factory DatabaseConfig.sqlServer({
@@ -26,6 +30,7 @@ class DatabaseConfig {
     required String database,
     required String server,
     required int port,
+    int? maxResultBufferBytes,
   }) {
     return DatabaseConfig(
       driverName: driverName,
@@ -35,6 +40,7 @@ class DatabaseConfig {
       server: server,
       port: port,
       databaseType: DatabaseType.sqlServer,
+      maxResultBufferBytes: maxResultBufferBytes,
     );
   }
 
@@ -45,6 +51,7 @@ class DatabaseConfig {
     required String database,
     required String server,
     required int port,
+    int? maxResultBufferBytes,
   }) {
     return DatabaseConfig(
       driverName: driverName,
@@ -54,6 +61,7 @@ class DatabaseConfig {
       server: server,
       port: port,
       databaseType: DatabaseType.sybaseAnywhere,
+      maxResultBufferBytes: maxResultBufferBytes,
     );
   }
 
@@ -64,6 +72,7 @@ class DatabaseConfig {
     required String database,
     required String server,
     required int port,
+    int? maxResultBufferBytes,
   }) {
     return DatabaseConfig(
       driverName: driverName,
@@ -73,6 +82,7 @@ class DatabaseConfig {
       server: server,
       port: port,
       databaseType: DatabaseType.postgresql,
+      maxResultBufferBytes: maxResultBufferBytes,
     );
   }
 }

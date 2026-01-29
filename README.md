@@ -56,7 +56,7 @@ Biblioteca Flutter/Dart para acesso a bancos de dados via ODBC, fornecendo uma c
 dependencies:
   flutter:
     sdk: flutter
-  odbc_fast: ^0.2.8
+  odbc_fast: ^0.3.0
   result_dart: ^2.1.1
   uuid: ^4.5.2
 ```
@@ -1305,7 +1305,7 @@ try {
 
 ## 📚 Dependências
 
-- **odbc_fast** (^0.2.8): Plataforma ODBC com motor Rust nativo
+- **odbc_fast** (^0.3.0): Plataforma ODBC com motor Rust nativo (buffer configurável via ConnectionOptions.maxResultBufferBytes)
 - **result_dart** (^2.1.1): Tratamento funcional de erros
 - **uuid** (^4.5.2): Geração de UUIDs
 

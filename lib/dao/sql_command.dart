@@ -34,6 +34,7 @@ class SqlCommand {
           server: config.server,
           port: config.port,
           databaseType: config.databaseType,
+          maxResultBufferBytes: config.maxResultBufferBytes,
         ) {
     transaction = SqlTransaction(odbc);
     schema = SchemaUtils(odbc);

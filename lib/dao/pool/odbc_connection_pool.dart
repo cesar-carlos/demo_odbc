@@ -45,6 +45,7 @@ class OdbcConnectionPool {
         password: _config!.password,
         port: _config!.port,
         databaseType: _config!.databaseType,
+        maxResultBufferBytes: _config!.maxResultBufferBytes,
       );
 
       final connectResult = await newDriver.connect();

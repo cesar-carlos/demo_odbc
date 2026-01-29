@@ -18,6 +18,7 @@ Future<void> selectExemplo() async {
     database: 'Estacao',
     server: 'CESAR_CARLOS\\DATA7',
     port: 1433,
+    maxResultBufferBytes: 64 * 1024 * 1024, // 64 MB para SELECT * FROM Produto
   );
 
   final query = SqlCommand(config);
@@ -35,10 +36,10 @@ Future<void> selectExemplo() async {
       (success) {
         while (!query.eof) {
           recordCount++;
-          //debugPrint('Record: ${query.field('CodProduto').asInt}');
-          //debugPrint('Record: ${query.field('Nome').asString}');
-          //debugPrint('Record: ${query.field('Email').asString}');
-          //debugPrint('Record: ${query.field('DataCadastro').asString}');
+          debugPrint('Record: ${query.field('CodProduto').asInt}');
+          debugPrint('Record: ${query.field('Nome').asString}');
+          debugPrint('Record: ${query.field('Email').asString}');
+          debugPrint('Record: ${query.field('DataCadastro').asString}');
           query.next();
         }
 

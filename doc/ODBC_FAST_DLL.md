@@ -79,7 +79,7 @@ Para **não depender do pub cache** (ex.: CI, máquina limpa, ou quando o pacote
 Versão específica (ex.: 0.2.8):
 
 ```powershell
-.\scripts\download_odbc_dll.ps1 -Version 0.2.8
+.\scripts\download_odbc_dll.ps1 -Version 0.3.0
 ```
 
 O script:
@@ -177,8 +177,8 @@ Se 1 e 2 não existirem no seu cenário (ex.: app Flutter que só tem o pacote v
 
 | Objetivo            | Ação                                                                                                                                                                                                                                            |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Só rodar app/testes | Na raiz do seu projeto: `& "$env:LOCALAPPDATA\Pub\Cache\hosted\pub.dev\odbc_fast-<versão>\scripts\copy_odbc_dll.ps1"` (substitua `<versão>` por ex. `0.2.8`). Depois: `flutter run -d windows` ou `dart test`. Ou use cópia manual (seção 2.2). |
-| Cópia manual        | Copiar `odbc_engine.dll` do cache do pub (`...\odbc_fast-0.2.8\artifacts\windows-x64\`) para a pasta do executável ou para uma pasta no PATH.                                                                                                   |
+| Só rodar app/testes | Na raiz do seu projeto: `& "$env:LOCALAPPDATA\Pub\Cache\hosted\pub.dev\odbc_fast-<versão>\scripts\copy_odbc_dll.ps1"` (substitua `<versão>` por ex. `0.3.0`). Depois: `flutter run -d windows` ou `dart test`. Ou use cópia manual (seção 2.2). |
+| Cópia manual        | Copiar `odbc_engine.dll` do cache do pub (`...\odbc_fast-0.3.0\artifacts\windows-x64\`) para a pasta do executável ou para uma pasta no PATH.                                                                                                   |
 | Garantir download   | Rodar `dart pub get` no projeto. A partir de versões que publicam o `hook/`, o Native Assets pode baixar a DLL automaticamente; se falhar, use o script acima ou a cópia manual.                                                                |
 | Compilar a DLL você | Clonar `dart_odbc_fast`, instalar Rust MSVC, rodar `.\scripts\build.ps1` (ou `cargo build --release` em `native/`) e usar a DLL gerada como na cópia acima.                                                                                     |
 
@@ -189,10 +189,10 @@ Se 1 e 2 não existirem no seu cenário (ex.: app Flutter que só tem o pacote v
 O pacote inclui `scripts/copy_odbc_dll.ps1`, que copia `odbc_engine.dll` do pacote (pub cache ou clone do repo) para a raiz do seu projeto e para as pastas do Flutter runner. **Como usar (na raiz do seu projeto):**
 
 ```powershell
-& "$env:LOCALAPPDATA\Pub\Cache\hosted\pub.dev\odbc_fast-0.2.8\scripts\copy_odbc_dll.ps1"
+& "$env:LOCALAPPDATA\Pub\Cache\hosted\pub.dev\odbc_fast-0.3.0\scripts\copy_odbc_dll.ps1"
 ```
 
-Substitua `0.2.8` pela versão do odbc_fast que você usa. O script usa o diretório atual como projeto de destino.
+Substitua `0.3.0` pela versão do odbc_fast que você usa. O script usa o diretório atual como projeto de destino.
 
 **O que o script faz:**
 
